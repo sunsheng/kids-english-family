@@ -1,9 +1,11 @@
 .env
+.cache/
 node_modules/
 .next/
 out/
 dist/
 coverage/
+data/generated/
 test-results/
 playwright-report/
 blob-report/

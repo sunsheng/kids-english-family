@@ -1,0 +1,22 @@
+book_name,category,stage,publisher,description,unit_name,unit_order,entry_order,spelling,phonetic_us,phonetic_uk,audio_us_url,audio_uk_url,definition_pos,definition_meaning,example_sentence,example_translation,difficulty_tag
+人教版五年级上册,textbook,primary,人教版,小学五年级上册同步核心词,Unit 1 My Day,1,1,breakfast,/ˈbrekfəst/,/ˈbrekfəst/,,,n.,早餐,I have breakfast at seven.,我七点吃早餐。,core
+人教版五年级上册,textbook,primary,人教版,小学五年级上册同步核心词,Unit 1 My Day,1,2,usually,/ˈjuːʒuəli/,/ˈjuːʒuəli/,,,adv.,通常地,I usually read after dinner.,我通常晚饭后阅读。,core
+人教版五年级上册,textbook,primary,人教版,小学五年级上册同步核心词,Unit 2 My Week,2,3,exercise,/ˈeksərsaɪz/,/ˈeksəsaɪz/,,,n.,运动和练习,We exercise in the park.,我们在公园锻炼。,core
+人教版五年级上册,textbook,primary,人教版,小学五年级上册同步核心词,Unit 2 My Week,2,4,weekend,/ˈwiːkend/,/ˌwiːkˈend/,,,n.,周末,The weekend is coming.,周末快到了。,core
+外研版七年级上册,textbook,junior,外研版,初一上册同步入门词汇,Module 1 Family,1,1,family,/ˈfæməli/,/ˈfæməli/,,,n.,家庭和家人,My family is happy.,我的家人很快乐。,core
+外研版七年级上册,textbook,junior,外研版,初一上册同步入门词汇,Module 1 Family,1,2,parent,/ˈperənt/,/ˈpeərənt/,,,n.,父亲或母亲,Every parent cares about their child.,每位父母都关心孩子。,core
+外研版七年级上册,textbook,junior,外研版,初一上册同步入门词汇,Module 1 Family,1,3,daughter,/ˈdɔːtər/,/ˈdɔːtə/,,,n.,女儿,Their daughter likes English.,他们的女儿喜欢英语。,core
+外研版七年级上册,textbook,junior,外研版,初一上册同步入门词汇,Module 2 School,2,4,science,/ˈsaɪəns/,/ˈsaɪəns/,,,n.,科学,Science is interesting.,科学很有趣。,core
+人教版高中必修一,textbook,senior,人教版,高中必修一同步核心词,Unit 1 Teenage Life,1,1,teenager,/ˈtiːneɪdʒər/,/ˈtiːneɪdʒə/,,,n.,青少年,The teenager joined a club.,这名青少年加入了一个社团。,core
+人教版高中必修一,textbook,senior,人教版,高中必修一同步核心词,Unit 1 Teenage Life,1,2,debate,/dɪˈbeɪt/,/dɪˈbeɪt/,,,n.,辩论,We had a debate in class.,我们在课堂上进行了一场辩论。,core
+人教版高中必修一,textbook,senior,人教版,高中必修一同步核心词,Unit 2 Travelling Around,2,3,prefer,/prɪˈfɜːr/,/prɪˈfɜː/,,,v.,更喜欢,I prefer tea to juice.,比起果汁我更喜欢茶。,core
+人教版高中必修一,textbook,senior,人教版,高中必修一同步核心词,Unit 2 Travelling Around,2,4,schedule,/ˈskedʒuːl/,/ˈʃedjuːl/,,,n.,日程安排,Please check the schedule.,请查看日程安排。,core
+小学核心词,exam_syllabus,primary,核心词,小学阶段高频基础词,,,1,breakfast,/ˈbrekfəst/,/ˈbrekfəst/,,,n.,早餐,I have breakfast at seven.,我七点吃早餐。,core
+小学核心词,exam_syllabus,primary,核心词,小学阶段高频基础词,,,2,family,/ˈfæməli/,/ˈfæməli/,,,n.,家庭和家人,My family is happy.,我的家人很快乐。,core
+小学核心词,exam_syllabus,primary,核心词,小学阶段高频基础词,,,3,weekend,/ˈwiːkend/,/ˌwiːkˈend/,,,n.,周末,The weekend is coming.,周末快到了。,core
+中考1600词,exam_syllabus,junior,中考,中考高频词汇样例,,,1,exercise,/ˈeksərsaɪz/,/ˈeksəsaɪz/,,,n.,运动和练习,We exercise in the park.,我们在公园锻炼。,core
+中考1600词,exam_syllabus,junior,中考,中考高频词汇样例,,,2,science,/ˈsaɪəns/,/ˈsaɪəns/,,,n.,科学,Science is interesting.,科学很有趣。,core
+中考1600词,exam_syllabus,junior,中考,中考高频词汇样例,,,3,prefer,/prɪˈfɜːr/,/prɪˈfɜː/,,,v.,更喜欢,I prefer tea to juice.,比起果汁我更喜欢茶。,core
+高考3500词,exam_syllabus,senior,高考,高考核心词汇样例,,,1,teenager,/ˈtiːneɪdʒər/,/ˈtiːneɪdʒə/,,,n.,青少年,The teenager joined a club.,这名青少年加入了一个社团。,core
+高考3500词,exam_syllabus,senior,高考,高考核心词汇样例,,,2,debate,/dɪˈbeɪt/,/dɪˈbeɪt/,,,n.,辩论,We had a debate in class.,我们在课堂上进行了一场辩论。,core
+高考3500词,exam_syllabus,senior,高考,高考核心词汇样例,,,3,schedule,/ˈskedʒuːl/,/ˈʃedjuːl/,,,n.,日程安排,Please check the schedule.,请查看日程安排。,core
