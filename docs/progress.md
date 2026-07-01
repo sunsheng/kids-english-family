@@ -20,7 +20,7 @@
 - 按设计拆分“开始学习”和“开始测试”：学习室只做看/听/方向键认知，测试页独立承载三轮拼写输入。
 - 扩展 Playwright E2E，覆盖 Phase 3 学习、入生词本、到期复习、三轮拼写和统计页面。
 - 完成 PRD Phase 4 第一步的词库 CSV 导入基础能力：新增小初高样例 CSV、dry-run 校验、PostgreSQL upsert 导入和数据源映射说明。
-- 完成人教版全套 K12 词库导入：`scripts/build-full-word-bank.mjs` 从 `lilinji/English` 仓库解析人教版小学（一年级起点/三年级起点两套）、初中、高中（旧教材必修/选修 + 新教材必修/选择性必修）全部教材，生成 `data/generated/full-word-bank.csv` 并通过 `--replace-books` 导入数据库，最终 `word_books` 47 本（人教版 43 本 + Phase 2 种子 4 本）、`words` 7289 个、`word_book_entries` 11831 条，核实无重复词书、无重复单词；同时修复了多来源聚合模式下因出版社字符串不同导致同一教材被拆分成重复词书的问题（词书去重键改为 `stage + category + name`，不含 `publisher`）。
+- 完成人教版全套 K12 词库导入：`scripts/build-full-word-bank.mjs` 从 `lilinji/English` 仓库解析人教版小学（一年级起点/三年级起点两套）、初中、高中（旧教材必修/选修 + 新教材必修/选择性必修）全部教材，生成 `data/generated/full-word-bank.csv` 并通过 `--replace-books` 导入数据库，最终 `word_books` 47 本（人教版 43 本 + Phase 2 种子 4 本）、`words` 7289 个、`word_book_entries` 11831 条，核实无重复词书、无重复单词；同时修复了多来源聚合模式下因出版社字符串不同导致同一教材被拆分成重复词书的问题（词书去重键改为 `stage + category + name`，不含 `publisher`）；README 增加 MIT 许可证章节并新增 `LICENSE` 文件。
 
 ## 当前验证
 
