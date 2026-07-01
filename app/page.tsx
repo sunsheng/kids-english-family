@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Check,
   Home as HomeIcon,
+  Keyboard,
   LibraryBig,
   ListChecks,
   LogOut,
@@ -21,8 +22,9 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createDrillRounds, maskedWord, type DrillRound } from "@/lib/spelling-drill";
 
-type ViewKey = "dashboard" | "library" | "learning";
+type ViewKey = "dashboard" | "library" | "learning" | "test" | "review" | "vocabulary" | "stats";
 type SchoolStage = "primary" | "junior" | "senior";
 type AccentPreference = "us" | "uk";
 
@@ -73,6 +75,58 @@ type LearningWord = {
   example_translation: string | null;
 };
 
+type ReviewWord = {
+  record_id: string;
+  status: "learning" | "reviewing" | "mastered";
+  next_review_at: string;
+  ease_factor: number;
+  interval_days: number;
+  repetitions: number;
+  times_seen: number;
+  times_correct: number;
+  times_wrong: number;
+  word_id: string;
+  spelling: string;
+  phonetic_us: string | null;
+  phonetic_uk: string | null;
+  audio_us_url: string | null;
+  audio_uk_url: string | null;
+  definitions: { pos?: string; meaning: string }[];
+  example_sentence: string | null;
+  example_translation: string | null;
+};
+
+type VocabularyWord = {
+  record_id: string;
+  status: "learning" | "reviewing" | "mastered";
+  next_review_at: string | null;
+  times_seen: number;
+  times_correct: number;
+  times_wrong: number;
+  word_id: string;
+  spelling: string;
+  definitions: { pos?: string; meaning: string }[];
+  example_sentence: string | null;
+  example_translation: string | null;
+};
+
+type DashboardData = {
+  summary: {
+    total_words_mastered: number;
+    current_streak_days: number;
+    longest_streak_days: number;
+    today_new_words: number;
+    today_review_words: number;
+    review_due_count: number;
+    vocab_book_count: number;
+  };
+  heatmap: {
+    study_date: string;
+    new_words_count: number;
+    review_words_count: number;
+  }[];
+};
+
 type StudentFormState = {
   id?: string;
   name: string;
@@ -85,6 +139,7 @@ const navItems = [
   { key: "dashboard", label: "仪表盘", icon: HomeIcon },
   { key: "library", label: "选词库", icon: LibraryBig },
   { key: "learning", label: "开始学习", icon: Play },
+  { key: "test", label: "开始测试", icon: Keyboard },
   { key: "review", label: "复习中心", icon: RotateCcw },
   { key: "vocabulary", label: "生词本", icon: ListChecks },
   { key: "stats", label: "统计", icon: BarChart3 },
@@ -128,6 +183,58 @@ function playAudioUrl(audioUrl: string | null) {
   void audio.play().catch(() => undefined);
 }
 
+const autoPlayHistory = new Map<string, number>();
+
+function playAutoAudioUrl(audioUrl: string | null, key: string) {
+  if (!audioUrl) {
+    return;
+  }
+
+  const now = Date.now();
+  const lastPlayedAt = autoPlayHistory.get(key) ?? 0;
+
+  if (now - lastPlayedAt < 1200) {
+    return;
+  }
+
+  autoPlayHistory.set(key, now);
+  playAudioUrl(audioUrl);
+}
+
+function createHeatmapLevels(days: DashboardData["heatmap"]) {
+  const levels = Array(14).fill(0) as number[];
+  const today = new Date();
+
+  days.forEach((day) => {
+    const date = new Date(day.study_date);
+    const diff = Math.round((today.getTime() - date.getTime()) / 86400000);
+    const index = 13 - diff;
+    const count = day.new_words_count + day.review_words_count;
+
+    if (index >= 0 && index < levels.length) {
+      levels[index] = Math.min(4, count);
+    }
+  });
+
+  return levels;
+}
+
+function getWordAudio(word: LearningWord | ReviewWord, student: Student | null) {
+  if (!student) {
+    return null;
+  }
+
+  return student.preferred_accent === "uk" ? word.audio_uk_url : word.audio_us_url;
+}
+
+function getWordPhonetic(word: LearningWord | ReviewWord, student: Student | null) {
+  if (!student) {
+    return null;
+  }
+
+  return student.preferred_accent === "uk" ? word.phonetic_uk : word.phonetic_us;
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [loginEmail, setLoginEmail] = useState("demo@example.com");
@@ -139,8 +246,13 @@ export default function Home() {
   const [wordBooks, setWordBooks] = useState<WordBook[]>([]);
   const [selectedBook, setSelectedBook] = useState<WordBook | null>(null);
   const [dailyCount, setDailyCount] = useState(20);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [reviewWords, setReviewWords] = useState<ReviewWord[]>([]);
+  const [vocabularyWords, setVocabularyWords] = useState<VocabularyWord[]>([]);
+  const [vocabularyKeyword, setVocabularyKeyword] = useState("");
   const [studentForm, setStudentForm] = useState<StudentFormState | null>(null);
   const [learningWord, setLearningWord] = useState<LearningWord | null>(null);
+  const [reviewTestWord, setReviewTestWord] = useState<ReviewWord | null>(null);
   const [learningMessage, setLearningMessage] = useState("");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [remotePhonetic, setRemotePhonetic] = useState<string | null>(null);
@@ -151,7 +263,14 @@ export default function Home() {
   const activeStudent = students.find((student) => student.id === activeStudentId) ?? null;
   const activePlanBook = wordBooks.find((book) => book.active_plan_id);
   const todayTarget = activePlanBook?.daily_new_word_count ?? 0;
-  const todayDone = activePlanBook?.mastered_count ?? 0;
+  const todayDone = dashboardData?.summary.today_new_words ?? 0;
+
+  const loadDashboard = useCallback(async (studentId: string) => {
+    const data = await readJson<DashboardData>(
+      await fetch(`/api/dashboard?studentId=${studentId}`),
+    );
+    setDashboardData(data);
+  }, []);
 
   const loadWordBooks = useCallback(async (studentId: string) => {
     const data = await readJson<{ wordBooks: WordBook[] }>(
@@ -159,6 +278,25 @@ export default function Home() {
     );
     setWordBooks(data.wordBooks);
   }, []);
+
+  const loadReviews = useCallback(async (studentId: string) => {
+    const data = await readJson<{ reviews: ReviewWord[] }>(
+      await fetch(`/api/learning/reviews?studentId=${studentId}`),
+    );
+    setReviewWords(data.reviews);
+  }, []);
+
+  const loadVocabulary = useCallback(
+    async (studentId: string, keyword = vocabularyKeyword) => {
+      const data = await readJson<{ words: VocabularyWord[] }>(
+        await fetch(
+          `/api/vocabulary?studentId=${studentId}&keyword=${encodeURIComponent(keyword)}`,
+        ),
+      );
+      setVocabularyWords(data.words);
+    },
+    [vocabularyKeyword],
+  );
 
   const loadStudents = useCallback(
     async (userId: string, preferredStudentId?: string) => {
@@ -174,10 +312,10 @@ export default function Home() {
       setActiveStudentId(nextStudentId);
 
       if (nextStudentId) {
-        await loadWordBooks(nextStudentId);
+        await Promise.all([loadWordBooks(nextStudentId), loadDashboard(nextStudentId)]);
       }
     },
-    [loadWordBooks],
+    [loadDashboard, loadWordBooks],
   );
 
   const loadNextWord = useCallback(async (student: Student) => {
@@ -210,15 +348,12 @@ export default function Home() {
         const nextAudioUrl = data.audioUrl ?? localAudio;
         setAudioUrl(nextAudioUrl);
         setRemotePhonetic(data.phonetic ?? localPhonetic);
-        playAudioUrl(nextAudioUrl);
       })
-      .catch(() => {
-        playAudioUrl(localAudio);
-      });
+      .catch(() => undefined);
   }, []);
 
   const submitLearningRecord = useCallback(
-    async (result: "known" | "unknown") => {
+    async (result: "known" | "unknown" | "correct" | "wrong") => {
       if (!activeStudent || !learningWord || isSubmittingRecord) {
         return;
       }
@@ -240,7 +375,7 @@ export default function Home() {
             }),
           }),
         );
-        await loadWordBooks(activeStudent.id);
+        await Promise.all([loadWordBooks(activeStudent.id), loadDashboard(activeStudent.id)]);
         await loadNextWord(activeStudent);
       } catch (error) {
         setLearningMessage(error instanceof Error ? error.message : "保存学习记录失败。");
@@ -248,7 +383,56 @@ export default function Home() {
         setIsSubmittingRecord(false);
       }
     },
-    [activeStudent, isSubmittingRecord, learningWord, loadNextWord, loadWordBooks],
+    [activeStudent, isSubmittingRecord, learningWord, loadDashboard, loadNextWord, loadWordBooks],
+  );
+
+  const submitReviewRecord = useCallback(
+    async (word: ReviewWord, result: "correct" | "wrong") => {
+      if (!activeStudent || isSubmittingRecord) {
+        return;
+      }
+
+      setIsSubmittingRecord(true);
+
+      try {
+        await readJson(
+          await fetch("/api/learning/records", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              studentId: activeStudent.id,
+              wordId: word.word_id,
+              result,
+              mode: "review",
+            }),
+          }),
+        );
+        await Promise.all([
+          loadReviews(activeStudent.id),
+          loadDashboard(activeStudent.id),
+          loadVocabulary(activeStudent.id),
+        ]);
+      } catch (error) {
+        setAppError(error instanceof Error ? error.message : "保存复习记录失败。");
+      } finally {
+        setIsSubmittingRecord(false);
+      }
+    },
+    [activeStudent, isSubmittingRecord, loadDashboard, loadReviews, loadVocabulary],
+  );
+
+  const submitTestRecord = useCallback(
+    async (result: "correct" | "wrong") => {
+      if (reviewTestWord) {
+        await submitReviewRecord(reviewTestWord, result);
+        setReviewTestWord(null);
+        setActiveView("review");
+        return;
+      }
+
+      await submitLearningRecord(result);
+    },
+    [reviewTestWord, submitLearningRecord, submitReviewRecord],
   );
 
   useEffect(() => {
@@ -261,7 +445,12 @@ export default function Home() {
         playAudioUrl(audioUrl);
       }
 
-      if (event.key === " ") {
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        playAudioUrl(audioUrl);
+      }
+
+      if (event.key === " " || event.key === "ArrowDown") {
         event.preventDefault();
         setIsCardFlipped((current) => !current);
       }
@@ -281,14 +470,14 @@ export default function Home() {
 
   const dashboardStats = useMemo(
     () => [
-      { label: "连续打卡", value: activePlanBook ? "1 天" : "0 天" },
+      { label: "连续打卡", value: `${dashboardData?.summary.current_streak_days ?? 0} 天` },
       {
         label: "累计词汇",
-        value: String(wordBooks.reduce((total, book) => total + book.mastered_count, 0)),
+        value: String(dashboardData?.summary.total_words_mastered ?? 0),
       },
       { label: "今日已学", value: String(todayDone) },
     ],
-    [activePlanBook, todayDone, wordBooks],
+    [dashboardData, todayDone],
   );
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
@@ -380,19 +569,49 @@ export default function Home() {
 
   async function switchStudent(student: Student) {
     setActiveStudentId(student.id);
-    await loadWordBooks(student.id);
+    setReviewTestWord(null);
+    await Promise.all([loadWordBooks(student.id), loadDashboard(student.id)]);
 
-    if (activeView === "learning") {
+    if (activeView === "learning" || activeView === "test") {
       await loadNextWord(student);
+    }
+
+    if (activeView === "review") {
+      await loadReviews(student.id);
+    }
+
+    if (activeView === "vocabulary") {
+      await loadVocabulary(student.id);
     }
   }
 
   async function openView(view: ViewKey) {
     setActiveView(view);
 
-    if (view === "learning" && activeStudent) {
+    if (view !== "test") {
+      setReviewTestWord(null);
+    }
+
+    if ((view === "learning" || view === "test") && activeStudent) {
       await loadNextWord(activeStudent);
     }
+
+    if (view === "dashboard" && activeStudent) {
+      await loadDashboard(activeStudent.id);
+    }
+
+    if ((view === "review" || view === "stats") && activeStudent) {
+      await Promise.all([loadReviews(activeStudent.id), loadDashboard(activeStudent.id)]);
+    }
+
+    if (view === "vocabulary" && activeStudent) {
+      await loadVocabulary(activeStudent.id);
+    }
+  }
+
+  async function startReviewTest(word: ReviewWord) {
+    setReviewTestWord(word);
+    setActiveView("test");
   }
 
   if (!user) {
@@ -524,8 +743,7 @@ export default function Home() {
           <nav className="nav-list" aria-label="功能导航">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const enabled =
-                item.key === "dashboard" || item.key === "library" || item.key === "learning";
+              const enabled = true;
               const active = item.key === activeView;
 
               return (
@@ -561,9 +779,11 @@ export default function Home() {
           {activeView === "dashboard" ? (
             <Dashboard
               activeBook={activePlanBook}
+              dashboardData={dashboardData}
               dashboardStats={dashboardStats}
               onOpenLearning={() => void openView("learning")}
               onOpenLibrary={() => void openView("library")}
+              onOpenReview={() => void openView("review")}
             />
           ) : null}
           {activeView === "library" ? (
@@ -590,6 +810,60 @@ export default function Home() {
               word={learningWord}
             />
           ) : null}
+          {activeView === "test" ? (
+            <TestRoom
+              activeStudent={activeStudent}
+              audioUrl={
+                reviewTestWord
+                  ? getWordAudio(reviewTestWord, activeStudent)
+                  : learningWord
+                    ? audioUrl
+                    : null
+              }
+              isSubmitting={isSubmittingRecord}
+              message={learningMessage}
+              onComplete={(result) => void submitTestRecord(result)}
+              onReplay={() =>
+                playAudioUrl(
+                  reviewTestWord
+                    ? getWordAudio(reviewTestWord, activeStudent)
+                    : learningWord
+                      ? audioUrl
+                      : null,
+                )
+              }
+              phonetic={
+                reviewTestWord
+                  ? getWordPhonetic(reviewTestWord, activeStudent)
+                  : learningWord
+                    ? remotePhonetic
+                    : null
+              }
+              reviewWord={reviewTestWord}
+              word={learningWord}
+            />
+          ) : null}
+          {activeView === "review" ? (
+            <ReviewCenter
+              onStartTest={(word) => void startReviewTest(word)}
+              reviews={reviewWords}
+            />
+          ) : null}
+          {activeView === "vocabulary" ? (
+            <VocabularyBook
+              keyword={vocabularyKeyword}
+              onKeywordChange={(keyword) => {
+                setVocabularyKeyword(keyword);
+                if (activeStudent) {
+                  void loadVocabulary(activeStudent.id, keyword);
+                }
+              }}
+              words={vocabularyWords}
+            />
+          ) : null}
+          {activeView === "stats" ? (
+            <StatsPanel dashboardData={dashboardData} wordBooks={wordBooks} />
+          ) : null}
         </main>
       </div>
 
@@ -607,19 +881,28 @@ export default function Home() {
 
 function Dashboard({
   activeBook,
+  dashboardData,
   dashboardStats,
   onOpenLearning,
   onOpenLibrary,
+  onOpenReview,
 }: {
   activeBook?: WordBook;
+  dashboardData: DashboardData | null;
   dashboardStats: { label: string; value: string }[];
   onOpenLearning: () => void;
   onOpenLibrary: () => void;
+  onOpenReview: () => void;
 }) {
   const progressPercent = activeBook
-    ? Math.round((activeBook.mastered_count / Math.max(activeBook.total_words, 1)) * 100)
+    ? Math.round(
+        ((dashboardData?.summary.today_new_words ?? 0) /
+          Math.max(activeBook.daily_new_word_count ?? 1, 1)) *
+          100,
+      )
     : 0;
-  const heatmapDays = activeBook ? [1, 2, 3, 0, 2, 4, 1, 3, 4, 2, 0, 1, 3, 2] : Array(14).fill(0);
+  const heatmapDays = createHeatmapLevels(dashboardData?.heatmap ?? []);
+  const reviewDueCount = dashboardData?.summary.review_due_count ?? 0;
 
   return (
     <>
@@ -644,7 +927,7 @@ function Dashboard({
           <div className="task-row">
             <span>{activeBook?.name ?? "暂无计划"}</span>
             <strong>
-              {activeBook?.mastered_count ?? 0}/{activeBook?.daily_new_word_count ?? 0}
+              {dashboardData?.summary.today_new_words ?? 0}/{activeBook?.daily_new_word_count ?? 0}
             </strong>
           </div>
           <div className="progress-bar" aria-label="今日进度">
@@ -661,8 +944,12 @@ function Dashboard({
             <RotateCcw aria-hidden="true" size={22} />
             <h3>复习任务</h3>
           </div>
-          <div className="review-count">0</div>
-          <p>复习队列将在 Phase 3 接入艾宾浩斯算法。</p>
+          <div className="review-count">{reviewDueCount}</div>
+          <p>今日到期复习词会按简化 SM-2 自动进入队列。</p>
+          <button className="start-button" onClick={onOpenReview} type="button">
+            <RotateCcw aria-hidden="true" size={22} />
+            去复习
+          </button>
         </article>
 
         <div className="stat-strip" aria-label="学习统计">
@@ -816,10 +1103,16 @@ function LearningRoom({
   learningMessage: string;
   onFlip: () => void;
   onReplay: () => void;
-  onSubmit: (result: "known" | "unknown") => void;
+  onSubmit: (result: "known" | "unknown" | "correct" | "wrong") => void;
   phonetic: string | null;
   word: LearningWord | null;
 }) {
+  useEffect(() => {
+    if (word) {
+      playAutoAudioUrl(audioUrl, `learning-${word.word_id}`);
+    }
+  }, [audioUrl, word]);
+
   return (
     <>
       <section className="page-heading" aria-labelledby="learning-title">
@@ -845,7 +1138,7 @@ function LearningRoom({
               <span>
                 今日进度：{word.completed_count}/{word.daily_new_word_count}
               </span>
-              <span>R 重听 · Space 翻卡 · ← 不认识 · → 认识</span>
+              <span>↑ 重听 · ↓ 翻卡 · ← 不认识 · → 认识</span>
             </div>
             <button className="word-card" onClick={onFlip} type="button">
               <span className="word-spelling">{word.spelling}</span>
@@ -898,6 +1191,383 @@ function LearningRoom({
             <p>{learningMessage}</p>
           </div>
         )}
+      </section>
+    </>
+  );
+}
+
+function TestRoom({
+  activeStudent,
+  audioUrl,
+  isSubmitting,
+  message,
+  onComplete,
+  onReplay,
+  phonetic,
+  reviewWord,
+  word,
+}: {
+  activeStudent: Student | null;
+  audioUrl: string | null;
+  isSubmitting: boolean;
+  message: string;
+  onComplete: (result: "correct" | "wrong") => void;
+  onReplay: () => void;
+  phonetic: string | null;
+  reviewWord: ReviewWord | null;
+  word: LearningWord | null;
+}) {
+  const testWord = reviewWord ?? word;
+  const spelling = testWord?.spelling ?? "";
+
+  return (
+    <>
+      <section className="page-heading" aria-labelledby="test-title">
+        <div>
+          <p className="eyebrow">Test Room</p>
+          <h2 id="test-title">测试</h2>
+          <p>
+            {testWord
+              ? `${reviewWord ? "复习测试" : "新词测试"} · ${activeStudent?.preferred_accent === "uk" ? "英音" : "美音"}`
+              : "暂无可测试单词。"}
+          </p>
+        </div>
+        <button className="primary-action" disabled={!audioUrl} onClick={onReplay} type="button">
+          <Volume2 aria-hidden="true" size={22} />
+          重听
+        </button>
+      </section>
+
+      <section className="learning-panel" aria-label="拼写测试">
+        {testWord ? (
+          <>
+            <div className="test-summary">
+              <div>
+                <span className="word-phonetic">{phonetic ?? "音标加载中"}</span>
+                <p>听发音，按键盘输入缺失字母。</p>
+              </div>
+              <span>{reviewWord ? "到期复习" : word?.word_book_name}</span>
+            </div>
+            <SpellingDrill
+              audioUrl={audioUrl}
+              disabled={isSubmitting}
+              key={`${reviewWord ? "review" : "new"}-${testWord.word_id}`}
+              onComplete={onComplete}
+              onReplay={onReplay}
+              word={spelling}
+            />
+          </>
+        ) : (
+          <div className="empty-state">
+            <p>{message}</p>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function SpellingDrill({
+  audioUrl,
+  disabled,
+  onComplete,
+  onReplay,
+  word,
+}: {
+  audioUrl: string | null;
+  disabled: boolean;
+  onComplete: (result: "correct" | "wrong") => void;
+  onReplay: () => void;
+  word: string;
+}) {
+  const rounds = useMemo(() => createDrillRounds(word), [word]);
+  const [roundIndex, setRoundIndex] = useState(0);
+  const [answers, setAnswers] = useState<string[]>([]);
+  const [hadError, setHadError] = useState(false);
+  const [feedback, setFeedback] = useState<"idle" | "correct" | "wrong">("idle");
+  const round = rounds[roundIndex] as DrillRound;
+  const letters = maskedWord(word.toLowerCase(), round);
+  const isComplete = answers.length === round.length && answers.every(Boolean);
+  const cells = letters.map((letter, index) => ({
+    answer: letter ? "" : (answers[letters.slice(0, index).filter((cell) => !cell).length] ?? ""),
+    index,
+    letter,
+  }));
+
+  useEffect(() => {
+    playAutoAudioUrl(audioUrl, `spelling-${word}-${roundIndex}`);
+  }, [audioUrl, roundIndex, word]);
+
+  const submitRound = useCallback(() => {
+    if (!isComplete || disabled) {
+      return;
+    }
+
+    const expected = word.toLowerCase().slice(round.start, round.start + round.length);
+    const actual = answers.join("").toLowerCase();
+
+    if (actual !== expected) {
+      setHadError(true);
+      setFeedback("wrong");
+      window.setTimeout(() => {
+        setAnswers([]);
+        setFeedback("idle");
+      }, 260);
+      return;
+    }
+
+    setFeedback("correct");
+    window.setTimeout(() => {
+      if (roundIndex === rounds.length - 1) {
+        onComplete(hadError ? "wrong" : "correct");
+        return;
+      }
+
+      setRoundIndex((current) => current + 1);
+      setAnswers([]);
+      setFeedback("idle");
+    }, 260);
+  }, [answers, disabled, hadError, isComplete, onComplete, round, roundIndex, rounds.length, word]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (disabled) {
+        return;
+      }
+
+      if (/^[a-zA-Z]$/.test(event.key)) {
+        event.preventDefault();
+        setAnswers((current) => {
+          if (current.length >= round.length) {
+            return current;
+          }
+
+          return [...current, event.key.toLowerCase()];
+        });
+      }
+
+      if (event.key === "Backspace") {
+        event.preventDefault();
+        setAnswers((current) => current.slice(0, -1));
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submitRound();
+      }
+
+      if (event.key === "r" || event.key === "R") {
+        onReplay();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [disabled, onReplay, round.length, submitRound]);
+
+  return (
+    <section className={`spelling-drill ${feedback}`} aria-label="拼写三轮巩固">
+      <div className="drill-header">
+        <div>
+          <p className="eyebrow">Spelling Drill</p>
+          <h3>第 {round.round} 轮</h3>
+        </div>
+        <span>{hadError ? "本词已出现错误，将按答错调度复习。" : "三轮零错误才算答对。"}</span>
+      </div>
+      <div className="letter-grid" aria-label="字母格">
+        {cells.map(({ answer, index, letter }) => {
+          if (letter) {
+            return (
+              <span className="letter-cell fixed" key={`${letter}-${index}`}>
+                {letter}
+              </span>
+            );
+          }
+
+          return (
+            <span className="letter-cell blank" key={`blank-${index}`}>
+              {answer}
+            </span>
+          );
+        })}
+      </div>
+      {round.prompt.length > 0 ? (
+        <div className="prompt-row" aria-label="提示块">
+          {round.prompt.map((prompt) => (
+            <span key={prompt}>{prompt}</span>
+          ))}
+        </div>
+      ) : null}
+      <div className="drill-actions">
+        <button className="book-button" disabled={disabled} onClick={submitRound} type="button">
+          <Check aria-hidden="true" size={20} />
+          提交本轮
+        </button>
+        <button
+          className="book-button secondary"
+          disabled={!audioUrl}
+          onClick={onReplay}
+          type="button"
+        >
+          <Volume2 aria-hidden="true" size={20} />
+          重听
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ReviewCenter({
+  onStartTest,
+  reviews,
+}: {
+  onStartTest: (word: ReviewWord) => void;
+  reviews: ReviewWord[];
+}) {
+  return (
+    <>
+      <section className="page-heading" aria-labelledby="review-title">
+        <div>
+          <p className="eyebrow">Review Center</p>
+          <h2 id="review-title">复习中心</h2>
+          <p>今日到期 {reviews.length} 个词，选择一个进入测试页完成复习。</p>
+        </div>
+      </section>
+
+      <section className="vocab-list" aria-label="复习队列">
+        {reviews.length > 0 ? (
+          reviews.map((word) => (
+            <article className="vocab-item" key={word.record_id}>
+              <div>
+                <h3>{word.spelling}</h3>
+                <p>{word.definitions.map((definition) => definition.meaning).join("；")}</p>
+              </div>
+              <div className="vocab-meta">
+                <span>连续 {word.repetitions}</span>
+                <span>错 {word.times_wrong}</span>
+                <button
+                  className="book-button compact"
+                  onClick={() => onStartTest(word)}
+                  type="button"
+                >
+                  <Keyboard aria-hidden="true" size={18} />
+                  开始测试
+                </button>
+              </div>
+            </article>
+          ))
+        ) : (
+          <div className="empty-state">
+            <p>今天没有到期复习词。</p>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function VocabularyBook({
+  keyword,
+  onKeywordChange,
+  words,
+}: {
+  keyword: string;
+  onKeywordChange: (keyword: string) => void;
+  words: VocabularyWord[];
+}) {
+  return (
+    <>
+      <section className="page-heading" aria-labelledby="vocabulary-title">
+        <div>
+          <p className="eyebrow">Vocabulary</p>
+          <h2 id="vocabulary-title">生词本</h2>
+          <p>所有答错或标记不认识的词会进入这里。</p>
+        </div>
+        <label className="search-box interactive">
+          <Search aria-hidden="true" size={20} />
+          <input
+            aria-label="搜索生词"
+            onChange={(event) => onKeywordChange(event.target.value)}
+            placeholder="搜索生词"
+            value={keyword}
+          />
+        </label>
+      </section>
+
+      <section className="vocab-list" aria-label="生词列表">
+        {words.length > 0 ? (
+          words.map((word) => (
+            <article className="vocab-item" key={word.record_id}>
+              <div>
+                <h3>{word.spelling}</h3>
+                <p>{word.definitions.map((definition) => definition.meaning).join("；")}</p>
+              </div>
+              <div className="vocab-meta">
+                <span>错 {word.times_wrong}</span>
+                <span>对 {word.times_correct}</span>
+                <span>{word.next_review_at ? `下次 ${word.next_review_at}` : "暂无复习"}</span>
+              </div>
+            </article>
+          ))
+        ) : (
+          <div className="empty-state">
+            <p>暂无生词。</p>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function StatsPanel({
+  dashboardData,
+  wordBooks,
+}: {
+  dashboardData: DashboardData | null;
+  wordBooks: WordBook[];
+}) {
+  const summary = dashboardData?.summary;
+
+  return (
+    <>
+      <section className="page-heading" aria-labelledby="stats-title">
+        <div>
+          <p className="eyebrow">Stats</p>
+          <h2 id="stats-title">统计</h2>
+          <p>词汇量、复习量和学习日历读取真实学习记录。</p>
+        </div>
+      </section>
+
+      <section className="stats-grid" aria-label="统计详情">
+        <article className="stat-card">
+          <span>累计掌握</span>
+          <strong>{summary?.total_words_mastered ?? 0}</strong>
+        </article>
+        <article className="stat-card">
+          <span>待复习</span>
+          <strong>{summary?.review_due_count ?? 0}</strong>
+        </article>
+        <article className="stat-card">
+          <span>生词</span>
+          <strong>{summary?.vocab_book_count ?? 0}</strong>
+        </article>
+        {wordBooks.map((book) => (
+          <article className="vocab-item" key={book.id}>
+            <div>
+              <h3>{book.name}</h3>
+              <p>
+                {book.mastered_count}/{book.total_words}
+              </p>
+            </div>
+            <div className="progress-bar" aria-label={`${book.name} 统计进度`}>
+              <span
+                style={{
+                  width: `${Math.round((book.mastered_count / Math.max(book.total_words, 1)) * 100)}%`,
+                }}
+              />
+            </div>
+          </article>
+        ))}
       </section>
     </>
   );

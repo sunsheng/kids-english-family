@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { Pool } from "pg";
+import { createDrillRounds } from "../lib/spelling-drill";
 
 const pool = new Pool({
   connectionString:
@@ -17,6 +18,20 @@ test.beforeEach(async () => {
     "DELETE FROM learning_records WHERE student_id = '10000000-0000-0000-0000-000000000001'",
   );
   await pool.query(
+    "DELETE FROM daily_study_logs WHERE student_id = '10000000-0000-0000-0000-000000000001'",
+  );
+  await pool.query(
+    `
+      UPDATE student_stats
+      SET total_words_mastered = 0,
+          current_streak_days = 0,
+          longest_streak_days = 0,
+          last_study_date = NULL,
+          updated_at = now()
+      WHERE student_id = '10000000-0000-0000-0000-000000000001'
+    `,
+  );
+  await pool.query(
     `
       UPDATE study_plans
       SET cursor_order_index = 0,
@@ -28,12 +43,23 @@ test.beforeEach(async () => {
   );
 });
 
+async function completeSpellingDrill(page: import("@playwright/test").Page, word: string) {
+  const rounds = createDrillRounds(word);
+
+  for (const round of rounds) {
+    const answer = word.toLowerCase().slice(round.start, round.start + round.length);
+    await page.keyboard.type(answer);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(350);
+  }
+}
+
 test.afterAll(async () => {
   await pool.query("UPDATE students SET deleted_at = now() WHERE name LIKE '测试学员%'");
   await pool.end();
 });
 
-test("phase 2 core UI flow", async ({ page }) => {
+test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) => {
   const studentName = `测试学员${Date.now().toString().slice(-4)}`;
 
   await page.goto("/");
@@ -84,13 +110,59 @@ test("phase 2 core UI flow", async ({ page }) => {
 
   await page.locator(".word-card").click();
   await expect(page.locator(".word-detail")).toBeVisible();
-  await page.keyboard.press("KeyR");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowDown");
   await page.screenshot({ path: "test-results/phase2-ui/08-learning-flipped.png", fullPage: true });
+  await expect(page.getByLabel("拼写三轮巩固")).toHaveCount(0);
 
   const currentWord = await page.locator(".word-spelling").innerText();
   await page.getByRole("button", { name: "不认识" }).click();
   await expect(page.locator(".word-spelling")).not.toHaveText(currentWord);
+  const testWord = await page.locator(".word-spelling").innerText();
   await page.screenshot({ path: "test-results/phase2-ui/09-after-record.png", fullPage: true });
+
+  await page.getByRole("button", { name: "开始测试" }).click();
+  await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
+  await expect(page.getByLabel("拼写三轮巩固")).toBeVisible();
+  await completeSpellingDrill(page, testWord);
+  await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
+  await page.screenshot({ path: "test-results/phase2-ui/10-test-complete.png", fullPage: true });
+
+  await pool.query(
+    `
+      UPDATE learning_records lr
+      SET next_review_at = CURRENT_DATE
+      FROM words w
+      WHERE lr.word_id = w.id
+        AND lr.student_id = '10000000-0000-0000-0000-000000000001'
+        AND w.spelling = $1
+    `,
+    [currentWord],
+  );
+
+  await page.getByRole("button", { name: "生词本" }).click();
+  await expect(page.getByRole("heading", { name: "生词本" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: currentWord })).toBeVisible();
+  await page.screenshot({ path: "test-results/phase2-ui/11-vocabulary.png", fullPage: true });
+
+  await page.getByRole("button", { name: "复习中心" }).click();
+  await expect(page.getByRole("heading", { name: "复习中心" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: currentWord })).toBeVisible();
+  await page
+    .locator(".vocab-item")
+    .filter({ has: page.getByRole("heading", { name: currentWord }) })
+    .getByRole("button", { name: "开始测试" })
+    .click();
+  await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
+  await completeSpellingDrill(page, currentWord);
+  await expect(page.getByRole("heading", { name: "复习中心" })).toBeVisible();
+  await expect(page.getByText("今天没有到期复习词。")).toBeVisible();
+  await page.screenshot({ path: "test-results/phase2-ui/12-review-complete.png", fullPage: true });
+
+  await page.getByRole("button", { name: "统计" }).click();
+  await expect(page.getByRole("heading", { name: "统计" })).toBeVisible();
+  await expect(page.getByText("待复习")).toBeVisible();
+  await page.screenshot({ path: "test-results/phase2-ui/13-stats.png", fullPage: true });
 
   await page.getByRole("button", { name: `删除 ${studentName}` }).click();
   await expect(page.getByText(studentName)).toHaveCount(0);
