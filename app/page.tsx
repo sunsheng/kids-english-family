@@ -52,18 +52,18 @@ type WordBook = {
   publisher: string | null;
   description: string | null;
   total_words: number;
-  mastered_count: number;
+  learned_count: number;
   active_plan_id: string | null;
+  plan_status: "not_started" | "in_progress" | "completed" | "paused" | null;
   daily_new_word_count: number | null;
 };
 
 type LearningWord = {
   study_plan_id: string;
   word_book_name: string;
-  daily_new_word_count: number;
+  total_words: number;
   cursor_order_index: number;
   entry_order_index: number;
-  completed_count: number;
   word_id: string;
   spelling: string;
   phonetic_us: string | null;
@@ -145,7 +145,7 @@ const navItems = [
   { key: "stats", label: "统计", icon: BarChart3 },
 ];
 
-const dailyWordCounts = [10, 20, 30];
+const DEFAULT_DAILY_NEW_WORD_COUNT = 20;
 
 const stageLabels: Record<SchoolStage, string> = {
   primary: "小学",
@@ -244,8 +244,6 @@ export default function Home() {
   const [activeStudentId, setActiveStudentId] = useState("");
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [wordBooks, setWordBooks] = useState<WordBook[]>([]);
-  const [selectedBook, setSelectedBook] = useState<WordBook | null>(null);
-  const [dailyCount, setDailyCount] = useState(20);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [reviewWords, setReviewWords] = useState<ReviewWord[]>([]);
   const [vocabularyWords, setVocabularyWords] = useState<VocabularyWord[]>([]);
@@ -261,7 +259,7 @@ export default function Home() {
   const [appError, setAppError] = useState("");
 
   const activeStudent = students.find((student) => student.id === activeStudentId) ?? null;
-  const activePlanBook = wordBooks.find((book) => book.active_plan_id);
+  const activePlanBook = wordBooks.find((book) => book.plan_status === "in_progress");
   const todayTarget = activePlanBook?.daily_new_word_count ?? 0;
   const todayDone = dashboardData?.summary.today_new_words ?? 0;
 
@@ -541,8 +539,8 @@ export default function Home() {
     }
   }
 
-  async function createStudyPlan() {
-    if (!activeStudent || !selectedBook) {
+  async function startBook(book: WordBook) {
+    if (!activeStudent) {
       return;
     }
 
@@ -553,12 +551,11 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             studentId: activeStudent.id,
-            wordBookId: selectedBook.id,
-            dailyNewWordCount: dailyCount,
+            wordBookId: book.id,
+            dailyNewWordCount: DEFAULT_DAILY_NEW_WORD_COUNT,
           }),
         }),
       );
-      setSelectedBook(null);
       await loadWordBooks(activeStudent.id);
       setActiveView("learning");
       await loadNextWord(activeStudent);
@@ -787,14 +784,7 @@ export default function Home() {
             />
           ) : null}
           {activeView === "library" ? (
-            <Library
-              dailyCount={dailyCount}
-              onCreateStudyPlan={() => void createStudyPlan()}
-              onDailyCountChange={setDailyCount}
-              onSelectBook={setSelectedBook}
-              selectedBook={selectedBook}
-              wordBooks={wordBooks}
-            />
+            <Library onStartBook={(book) => void startBook(book)} wordBooks={wordBooks} />
           ) : null}
           {activeView === "learning" ? (
             <LearningRoom
@@ -978,18 +968,10 @@ function Dashboard({
 }
 
 function Library({
-  dailyCount,
-  onCreateStudyPlan,
-  onDailyCountChange,
-  onSelectBook,
-  selectedBook,
+  onStartBook,
   wordBooks,
 }: {
-  dailyCount: number;
-  onCreateStudyPlan: () => void;
-  onDailyCountChange: (count: number) => void;
-  onSelectBook: (book: WordBook | null) => void;
-  selectedBook: WordBook | null;
+  onStartBook: (book: WordBook) => void;
   wordBooks: WordBook[];
 }) {
   return (
@@ -998,7 +980,7 @@ function Library({
         <div>
           <p className="eyebrow">Library</p>
           <h2 id="library-title">选词库</h2>
-          <p>选择一本词书并设置每日新词量。</p>
+          <p>选择一本词书，直接开始学习。</p>
         </div>
         <div className="search-box">
           <Search aria-hidden="true" size={20} />
@@ -1009,7 +991,7 @@ function Library({
       <section className="book-grid" aria-label="词库列表">
         {wordBooks.map((book) => {
           const progressPercent = Math.round(
-            (book.mastered_count / Math.max(book.total_words, 1)) * 100,
+            (book.learned_count / Math.max(book.total_words, 1)) * 100,
           );
 
           return (
@@ -1025,61 +1007,22 @@ function Library({
                 <h3>{book.name}</h3>
                 <div className="book-progress">
                   <span>
-                    {book.mastered_count}/{book.total_words}
+                    学到 {book.learned_count}/{book.total_words}
                   </span>
                   <span>{progressPercent}%</span>
                 </div>
                 <div className="progress-bar" aria-label={`${book.name} 学习进度`}>
                   <span style={{ width: `${progressPercent}%` }} />
                 </div>
-                <button className="book-button" onClick={() => onSelectBook(book)} type="button">
+                <button className="book-button" onClick={() => onStartBook(book)} type="button">
                   <BookOpen aria-hidden="true" size={20} />
-                  {book.active_plan_id ? "调整计划" : "选择"}
+                  {book.active_plan_id ? "继续学习" : "开始学习"}
                 </button>
               </div>
             </article>
           );
         })}
       </section>
-
-      {selectedBook ? (
-        <div className="modal-backdrop" role="presentation">
-          <section
-            aria-labelledby="plan-dialog-title"
-            aria-modal="true"
-            className="plan-dialog"
-            role="dialog"
-          >
-            <button
-              aria-label="关闭"
-              className="dialog-close"
-              onClick={() => onSelectBook(null)}
-              type="button"
-            >
-              <X aria-hidden="true" size={22} />
-            </button>
-            <p className="eyebrow">学习计划</p>
-            <h3 id="plan-dialog-title">{selectedBook.name}</h3>
-            <div className="count-options" aria-label="每日新词量">
-              {dailyWordCounts.map((count) => (
-                <button
-                  className={dailyCount === count ? "count-option active" : "count-option"}
-                  key={count}
-                  onClick={() => onDailyCountChange(count)}
-                  type="button"
-                >
-                  {dailyCount === count ? <Check aria-hidden="true" size={18} /> : null}
-                  {count}
-                </button>
-              ))}
-            </div>
-            <button className="confirm-button" onClick={onCreateStudyPlan} type="button">
-              <Play aria-hidden="true" size={22} />
-              开启计划
-            </button>
-          </section>
-        </div>
-      ) : null}
     </>
   );
 }
@@ -1136,7 +1079,7 @@ function LearningRoom({
           <>
             <div className="learning-progress">
               <span>
-                今日进度：{word.completed_count}/{word.daily_new_word_count}
+                学到 {word.entry_order_index}/{word.total_words}
               </span>
               <span>↑ 重听 · ↓ 翻卡 · ← 不认识 · → 认识</span>
             </div>
@@ -1356,7 +1299,8 @@ function SpellingDrill({
         submitRound();
       }
 
-      if (event.key === "r" || event.key === "R") {
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
         onReplay();
       }
     }
@@ -1556,13 +1500,13 @@ function StatsPanel({
             <div>
               <h3>{book.name}</h3>
               <p>
-                {book.mastered_count}/{book.total_words}
+                {book.learned_count}/{book.total_words}
               </p>
             </div>
             <div className="progress-bar" aria-label={`${book.name} 统计进度`}>
               <span
                 style={{
-                  width: `${Math.round((book.mastered_count / Math.max(book.total_words, 1)) * 100)}%`,
+                  width: `${Math.round((book.learned_count / Math.max(book.total_words, 1)) * 100)}%`,
                 }}
               />
             </div>

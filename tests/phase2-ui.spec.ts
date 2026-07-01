@@ -99,10 +99,7 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
     .filter({ has: page.getByRole("heading", { name: "人教版五年级上册" }) })
     .getByRole("button")
     .click();
-  await expect(page.getByRole("dialog", { name: "人教版五年级上册" })).toBeVisible();
-  await page.getByRole("button", { name: "10" }).click();
-  await page.screenshot({ path: "test-results/phase2-ui/06-plan-dialog.png", fullPage: true });
-  await page.getByRole("button", { name: "开启计划" }).click();
+  await page.screenshot({ path: "test-results/phase2-ui/06-plan-started.png", fullPage: true });
 
   await expect(page.getByRole("heading", { name: "学习室" })).toBeVisible();
   await expect(page.locator(".word-card")).toBeVisible();

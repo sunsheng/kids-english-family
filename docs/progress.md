@@ -21,6 +21,11 @@
 - 扩展 Playwright E2E，覆盖 Phase 3 学习、入生词本、到期复习、三轮拼写和统计页面。
 - 完成 PRD Phase 4 第一步的词库 CSV 导入基础能力：新增小初高样例 CSV、dry-run 校验、PostgreSQL upsert 导入和数据源映射说明。
 - 完成人教版全套 K12 词库导入：`scripts/build-full-word-bank.mjs` 从 `lilinji/English` 仓库解析人教版小学（一年级起点/三年级起点两套）、初中、高中（旧教材必修/选修 + 新教材必修/选择性必修）全部教材，生成 `data/generated/full-word-bank.csv` 并通过 `--replace-books` 导入数据库，最终 `word_books` 47 本（人教版 43 本 + Phase 2 种子 4 本）、`words` 7289 个、`word_book_entries` 11831 条，核实无重复词书、无重复单词；同时修复了多来源聚合模式下因出版社字符串不同导致同一教材被拆分成重复词书的问题（词书去重键改为 `stage + category + name`，不含 `publisher`）；README 增加 MIT 许可证章节并新增 `LICENSE` 文件。
+- 内部测试发现并修复 4 个问题：
+  1. 学习进度口径错误：学习室"今日进度"此前用的是"已掌握词数"（需连续答对 3 次才 +1，一次学习session内基本不动），改为"学到第 X/总词数"（`entry_order_index`/`total_words`，随学习即时变化），选词库和统计页也统一为同一口径（`study_plans.cursor_order_index`）。
+  2. 修复同一学员可同时对多本词书开启学习计划导致的状态错乱：`study-plans` 开启新计划时会把该学员其他 `in_progress` 计划自动改为 `paused`（进度保留，可再次点击继续）；`/api/learning/next` 和仪表盘"当前学习书"都改为只认 `status = 'in_progress'`，两处不再对不上。
+  3. 选词库去掉"每日新词量（10/20/30）"选择弹窗：点击词书卡片直接开启/继续计划并进入学习室，每日目标改为系统固定默认值（20），仅用于仪表盘"今日任务"展示。
+  4. 测试页拼写练习的重听快捷键从 `R` 改为 `Arrow Up`：原来的 `R` 键和拼写作答里输入字母 r 会互相冲突（单词含 r 时按 R 既会重听又会被当成输入），改用方向键后与学习室重听快捷键保持一致，且不占用字母输入。
 
 ## 当前验证
 

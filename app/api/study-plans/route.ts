@@ -25,6 +25,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "学习计划信息不完整。" }, { status: 400 });
   }
 
+  await query(
+    `
+      UPDATE study_plans
+      SET status = 'paused',
+          updated_at = now()
+      WHERE student_id = $1
+        AND word_book_id != $2
+        AND status = 'in_progress'
+    `,
+    [studentId, wordBookId],
+  );
+
   const existing = await query<StudyPlanRow>(
     `
       SELECT id, student_id, word_book_id, daily_new_word_count, status, cursor_order_index
