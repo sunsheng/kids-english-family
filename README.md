@@ -66,3 +66,4 @@ npm run build
 - 拼写测试设计：[docs/spelling-drill-design.md](docs/spelling-drill-design.md)
 - 词库调研：[docs/dictionary-and-wordbank-research.md](docs/dictionary-and-wordbank-research.md)
 - 开发进度：[docs/progress.md](docs/progress.md)
+- 学习室键盘流程参照：[design/word-card-mockup.html](design/word-card-mockup.html)
