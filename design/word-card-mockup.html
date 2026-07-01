@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>学习室 · 单词卡片 UI 草图</title>
+    <style>
+      :root {
+        --bg: #f5f7fa;
+        --primary: #5d9cec;
+        --primary-dark: #4a87d6;
+        --success: #a0d468;
+        --success-dark: #8bc34a;
+        --danger: #ed5565;
+        --danger-dark: #da4453;
+        --text-main: #333333;
+        --text-sub: #999999;
+        --card-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-width: 1024px;
+        background: var(--bg);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+          "PingFang SC", "Microsoft YaHei";
+        color: var(--text-main);
+      }
+
+      /* ---------- Header ---------- */
+      .app-header {
+        height: 64px;
+        background: #fff;
+        box-shadow: var(--card-shadow);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        font-size: 15px;
+        color: var(--text-sub);
+      }
+      .app-header .header-left {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+      .app-header b {
+        color: var(--text-main);
+      }
+      .app-header .switch-link {
+        color: var(--primary);
+        cursor: pointer;
+        margin-left: 6px;
+      }
+      .app-header .logout {
+        color: var(--text-sub);
+        cursor: pointer;
+      }
+      .accent-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 16px;
+        background: #f0f3f8;
+        font-size: 13px;
+        color: var(--text-main);
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.15s;
+      }
+      .accent-toggle:hover {
+        background: #e4e9f0;
+      }
+
+      /* ---------- Layout ---------- */
+      .app-body {
+        display: flex;
+        min-height: calc(100vh - 64px);
+      }
+      .sidebar {
+        width: 220px;
+        background: #fff;
+        padding: 20px 12px;
+        border-right: 1px solid #eceff3;
+      }
+      .sidebar .group-title {
+        font-size: 12px;
+        color: var(--text-sub);
+        margin: 4px 8px 8px;
+        letter-spacing: 1px;
+      }
+      .student-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 8px;
+        border-radius: 8px;
+        margin-bottom: 4px;
+        cursor: pointer;
+        font-size: 15px;
+      }
+      .student-item .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--primary);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: bold;
+        flex-shrink: 0;
+      }
+      .student-item.active {
+        background: #eaf2fd;
+        color: var(--primary-dark);
+        font-weight: bold;
+      }
+      .nav-item {
+        padding: 12px 10px;
+        border-radius: 8px;
+        margin-bottom: 2px;
+        cursor: pointer;
+        font-size: 15px;
+        color: var(--text-main);
+        transition: background 0.15s;
+      }
+      .nav-item:hover {
+        background: #f0f3f8;
+      }
+      .nav-item.active {
+        background: var(--primary);
+        color: #fff;
+        font-weight: bold;
+      }
+      .nav-sep {
+        height: 16px;
+      }
+
+      /* ---------- Main ---------- */
+      .main {
+        flex: 1;
+        padding: 40px 60px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .mode-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 20px;
+      }
+      .mode-tab {
+        padding: 10px 22px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: bold;
+        color: var(--text-sub);
+        background: #fff;
+        cursor: pointer;
+        box-shadow: var(--card-shadow);
+        transition:
+          color 0.15s,
+          background 0.15s;
+      }
+      .mode-tab.active {
+        background: var(--primary);
+        color: #fff;
+      }
+
+      .round-indicator {
+        font-size: 14px;
+        color: var(--primary);
+        font-weight: bold;
+        margin-bottom: 12px;
+        height: 18px;
+      }
+
+      .progress-wrap {
+        width: 560px;
+        margin-bottom: 28px;
+      }
+      .progress-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 14px;
+        color: var(--text-sub);
+        margin-bottom: 6px;
+      }
+      .progress-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: #e4e9f0;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        background: var(--primary);
+        border-radius: 4px;
+        transition: width 0.2s ease;
+      }
+
+      /* ---------- Word Card ---------- */
+      .card-stage {
+        width: 560px;
+        height: 460px;
+        perspective: 1600px;
+        margin-bottom: 32px;
+      }
+      .word-card {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transform-style: preserve-3d;
+        transition: transform 0.2s ease;
+      }
+      .word-card.flipped {
+        transform: rotateY(180deg);
+      }
+      .card-face {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: var(--card-shadow);
+        backface-visibility: hidden;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+        text-align: center;
+      }
+      .card-back {
+        transform: rotateY(180deg);
+        justify-content: flex-start;
+        padding-top: 48px;
+      }
+
+      .speaking-indicator {
+        position: absolute;
+        top: 24px;
+        font-size: 14px;
+        color: var(--text-sub);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      .speaking-indicator.on {
+        opacity: 1;
+      }
+
+      .word-text {
+        font-size: 64px;
+        font-weight: 700;
+        color: var(--text-main);
+        margin: 0;
+        line-height: 1.1;
+      }
+      .word-pos {
+        font-size: 16px;
+        color: var(--text-sub);
+        margin-top: 8px;
+      }
+      .flip-hint {
+        position: absolute;
+        bottom: 24px;
+        font-size: 14px;
+        color: var(--text-sub);
+      }
+
+      .back-word {
+        font-size: 28px;
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+      .back-phonetic {
+        font-size: 16px;
+        color: var(--text-sub);
+        margin-bottom: 20px;
+      }
+      .back-def {
+        font-size: 24px;
+        color: var(--text-main);
+        margin-bottom: 20px;
+      }
+      .back-def .pos-tag {
+        color: var(--primary);
+        font-weight: bold;
+        margin-right: 8px;
+      }
+      .back-example {
+        font-size: 18px;
+        color: var(--text-sub);
+        font-style: italic;
+        padding: 0 24px;
+      }
+      .back-example .cn {
+        display: block;
+        margin-top: 4px;
+        font-style: normal;
+      }
+
+      /* ---------- Spelling mode ---------- */
+      .spell-face {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+      }
+      .spell-phonetic {
+        font-size: 16px;
+        color: var(--text-sub);
+        margin-bottom: 4px;
+      }
+      .spell-def {
+        font-size: 22px;
+        color: var(--text-main);
+        margin-bottom: 16px;
+      }
+      .spell-def .pos-tag {
+        color: var(--primary);
+        font-weight: bold;
+        margin-right: 6px;
+      }
+      .spell-prompt {
+        font-size: 18px;
+        color: var(--text-sub);
+        margin-bottom: 16px;
+      }
+
+      .letter-boxes {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 24px;
+      }
+      .letter-box {
+        width: 48px;
+        height: 64px;
+        border-radius: 8px;
+        font-size: 30px;
+        text-align: center;
+        font-family: inherit;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .letter-box.locked {
+        background: var(--bg);
+        color: var(--text-main);
+        font-weight: bold;
+      }
+      .letter-box.blank {
+        border: 2px solid #e4e9f0;
+        outline: none;
+        color: var(--text-main);
+        background: #fff;
+        caret-color: var(--primary);
+        text-transform: lowercase;
+      }
+      .letter-box.blank:focus {
+        border-color: var(--primary);
+      }
+      .letter-box.blank.correct {
+        border-color: var(--success);
+        background: #f5fbef;
+      }
+      .letter-box.blank.wrong {
+        border-color: var(--danger);
+        background: #fdf1f2;
+      }
+
+      .hint-section {
+        text-align: center;
+        margin-bottom: 12px;
+        min-height: 56px;
+      }
+      .hint-label {
+        font-size: 13px;
+        color: var(--text-sub);
+        margin-bottom: 8px;
+      }
+      .hint-tile {
+        display: inline-block;
+        padding: 8px 18px;
+        margin: 0 6px;
+        border-radius: 20px;
+        background: #f0f3f8;
+        color: var(--text-main);
+        font-size: 20px;
+        letter-spacing: 2px;
+      }
+
+      .spell-footnote {
+        font-size: 14px;
+        color: var(--text-sub);
+        margin-top: 8px;
+      }
+
+      /* ---------- Action buttons ---------- */
+      .actions {
+        display: flex;
+        gap: 20px;
+      }
+      .btn {
+        height: 56px;
+        min-width: 200px;
+        border-radius: 8px;
+        border: none;
+        font-size: 20px;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        transition:
+          background 0.15s,
+          transform 0.1s;
+        color: #fff;
+      }
+      .btn:active {
+        transform: scale(0.98);
+      }
+      .btn-danger {
+        background: var(--danger);
+      }
+      .btn-danger:hover {
+        background: var(--danger-dark);
+      }
+      .btn-success {
+        background: var(--success);
+      }
+      .btn-success:hover {
+        background: var(--success-dark);
+      }
+      .kbd {
+        font-size: 13px;
+        opacity: 0.85;
+        font-weight: normal;
+      }
+
+      .keyboard-legend {
+        margin-top: 24px;
+        font-size: 13px;
+        color: var(--text-sub);
+        display: flex;
+        gap: 18px;
+      }
+      .keyboard-legend kbd {
+        background: #fff;
+        border: 1px solid #e4e9f0;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 12px;
+      }
+
+      .fade-in {
+        animation: fadeIn 0.2s ease;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-header">
+      <div class="header-left">
+        <div>当前学员：<b>小明</b><span class="switch-link">[切换]</span></div>
+        <div
+          class="accent-toggle"
+          onclick="toggleAccent()"
+          title="发音口音设置，非学习中的高频操作"
+        >
+          🔊 <span id="accentLabel">美式</span>
+        </div>
+      </div>
+      <div>今日进度：<b id="headerProgress">1/20</b></div>
+      <div class="logout">退出</div>
+    </div>
+
+    <div class="app-body">
+      <div class="sidebar">
+        <div class="group-title">家庭学员</div>
+        <div class="student-item active">
+          <div class="avatar">明</div>
+          小明（小学）
+        </div>
+        <div class="student-item">
+          <div class="avatar" style="background: #ed5565">红</div>
+          小红（初中）
+        </div>
+        <div class="nav-sep"></div>
+        <div class="nav-item">仪表盘</div>
+        <div class="nav-item">选词库</div>
+        <div class="nav-item active">开始学习</div>
+        <div class="nav-item">复习中心</div>
+        <div class="nav-item">生词本</div>
+        <div class="nav-item">统计</div>
+      </div>
+
+      <div class="main">
+        <div class="mode-tabs">
+          <div class="mode-tab active" id="tabFlash" onclick="setMode('flash')">认知卡片</div>
+          <div class="mode-tab" id="tabSpell" onclick="setMode('spell')">拼写测试</div>
+        </div>
+
+        <div class="round-indicator" id="roundIndicator"></div>
+
+        <div class="progress-wrap">
+          <div class="progress-label">
+            <span>人教版五年级上册 · Unit 3</span>
+            <span id="progressText">1 / 20</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 5%"></div>
+          </div>
+        </div>
+
+        <!-- Flashcard mode -->
+        <div class="card-stage" id="flashStage">
+          <div class="word-card" id="wordCard">
+            <div class="card-face card-front">
+              <div class="speaking-indicator" id="speakingIndicator">🔊 播放中…</div>
+              <h1 class="word-text" id="wordText">apple</h1>
+              <div class="word-pos" id="wordPos">n.</div>
+              <div class="flip-hint">按空格键翻转 · R 重新发音</div>
+            </div>
+            <div class="card-face card-back">
+              <div class="back-word" id="backWord">apple</div>
+              <div class="back-phonetic" id="backPhonetic">
+                美 /ˈæpl/ &nbsp;·&nbsp; 英 /ˈæp(ə)l/
+              </div>
+              <div class="back-def" id="backDef"><span class="pos-tag">n.</span>苹果</div>
+              <div class="back-example" id="backExample">
+                She eats an apple every morning.
+                <span class="cn">她每天早上吃一个苹果。</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spelling mode -->
+        <div class="card-stage" id="spellStage" style="display: none">
+          <div class="card-face" style="position: static; width: 100%; height: 100%">
+            <div class="spell-face">
+              <div
+                class="speaking-indicator"
+                id="speakingIndicatorSpell"
+                style="position: static; margin-bottom: 8px"
+              >
+                🔊 播放中…
+              </div>
+              <div class="spell-phonetic" id="spellPhonetic">
+                美 /ˈæpl/ &nbsp;·&nbsp; 英 /ˈæp(ə)l/
+              </div>
+              <div class="spell-def" id="spellDef"><span class="pos-tag">n.</span>苹果</div>
+              <div class="spell-prompt" id="spellPrompt">
+                听发音，补全单词（自动播放，按 R 重新播放）
+              </div>
+              <div class="letter-boxes" id="letterBoxes"></div>
+              <div class="hint-section" id="hintSection"></div>
+              <div class="spell-footnote">
+                全部填写后按 <kbd>Enter</kbd> 提交，答错会清空本轮重来
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions" id="flashActions">
+          <button class="btn btn-danger" onclick="mark('unknown')">
+            ✕ 不认识 <span class="kbd">←</span>
+          </button>
+          <button class="btn btn-success" onclick="mark('known')">
+            ✓ 认识 <span class="kbd">→</span>
+          </button>
+        </div>
+
+        <div class="keyboard-legend" id="legendFlash">
+          <span><kbd>Space</kbd> 翻转/下一个</span>
+          <span><kbd>←</kbd> 不认识</span>
+          <span><kbd>→</kbd> 认识</span>
+          <span><kbd>R</kbd> 重新发音</span>
+        </div>
+        <div class="keyboard-legend" id="legendSpell" style="display: none">
+          <span>字母格自动跳格，Backspace 回退</span>
+          <span><kbd>Enter</kbd> 提交（仅正确才前进）</span>
+          <span><kbd>R</kbd> 重新发音</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const WORDS = [
+        {
+          word: "apple",
+          pos: "n.",
+          us: "ˈæpl",
+          uk: "ˈæp(ə)l",
+          def: "苹果",
+          ex: "She eats an apple every morning.",
+          exCn: "她每天早上吃一个苹果。",
+        },
+        {
+          word: "banana",
+          pos: "n.",
+          us: "bəˈnænə",
+          uk: "bəˈnɑːnə",
+          def: "香蕉",
+          ex: "The monkey likes bananas.",
+          exCn: "这只猴子喜欢香蕉。",
+        },
+        {
+          word: "family",
+          pos: "n.",
+          us: "ˈfæməli",
+          uk: "ˈfæməli",
+          def: "家庭；家人",
+          ex: "I love my family.",
+          exCn: "我爱我的家人。",
+        },
+        {
+          word: "weekend",
+          pos: "n.",
+          us: "ˈwiːkend",
+          uk: "ˌwiːkˈend",
+          def: "周末",
+          ex: "What do you do on the weekend?",
+          exCn: "你周末做什么？",
+        },
+        {
+          word: "friendly",
+          pos: "adj.",
+          us: "ˈfrendli",
+          uk: "ˈfrendli",
+          def: "友好的",
+          ex: "Our new teacher is very friendly.",
+          exCn: "我们的新老师非常友好。",
+        },
+      ];
+
+      let mode = "flash";
+      let index = 0;
+      let flipped = false;
+      let accent = "us"; // 'us' | 'uk' —— 全局设置，不在卡片上逐次切换
+      const TOTAL = 20; // 演示用：今日计划总词数
+
+      // ---- 拼写测试：三轮巩固状态 ----
+      let round = 1; // 1 | 2 | 3
+      let roundStartIndex = null; // 上一轮挖空起始位置，用于第2轮换位置
+      let currentBlanks = []; // [{ input, expected }]
+
+      function currentWord() {
+        return WORDS[index % WORDS.length];
+      }
+
+      // ==================== 通用 ====================
+
+      function updateProgressUI() {
+        const n = Math.min(index + 1, TOTAL);
+        document.getElementById("progressText").textContent = `${n} / ${TOTAL}`;
+        document.getElementById("headerProgress").textContent = `${n}/${TOTAL}`;
+        document.getElementById("progressFill").style.width = (n / TOTAL) * 100 + "%";
+      }
+
+      function toggleAccent() {
+        accent = accent === "us" ? "uk" : "us";
+        document.getElementById("accentLabel").textContent = accent === "us" ? "美式" : "英式";
+      }
+
+      function speak() {
+        const w = currentWord();
+        const indicator =
+          mode === "flash"
+            ? document.getElementById("speakingIndicator")
+            : document.getElementById("speakingIndicatorSpell");
+        if (!("speechSynthesis" in window)) {
+          return;
+        }
+        const utter = new SpeechSynthesisUtterance(w.word);
+        utter.lang = accent === "uk" ? "en-GB" : "en-US";
+        if (indicator) {
+          indicator.classList.add("on");
+          utter.onend = () => indicator.classList.remove("on");
+        }
+        speechSynthesis.cancel();
+        speechSynthesis.speak(utter);
+      }
+
+      // ==================== 认知卡片 ====================
+
+      function renderFlash() {
+        const w = currentWord();
+        document.getElementById("wordText").textContent = w.word;
+        document.getElementById("wordPos").textContent = w.pos;
+        document.getElementById("backWord").textContent = w.word;
+        document.getElementById("backPhonetic").innerHTML =
+          `美 /${w.us}/ &nbsp;·&nbsp; 英 /${w.uk}/`;
+        document.getElementById("backDef").innerHTML =
+          `<span class="pos-tag">${w.pos}</span>${w.def}`;
+        document.getElementById("backExample").innerHTML =
+          `${w.ex}<span class="cn">${w.exCn}</span>`;
+
+        const card = document.getElementById("wordCard");
+        card.classList.remove("flipped");
+        flipped = false;
+
+        updateProgressUI();
+        speak(); // 自动发音，无需点击
+      }
+
+      function next() {
+        index++;
+        renderForMode();
+      }
+
+      function flipCard() {
+        const card = document.getElementById("wordCard");
+        flipped = !flipped;
+        card.classList.toggle("flipped", flipped);
+      }
+
+      function mark(result) {
+        // result: 'known' | 'unknown' —— 演示：不认识会记入生词本（此处仅做视觉反馈占位）
+        next();
+      }
+
+      // ==================== 拼写测试：三轮巩固 ====================
+
+      function clamp(v, lo, hi) {
+        return Math.max(lo, Math.min(hi, v));
+      }
+
+      function shuffle(arr) {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      }
+
+      function chunkLength(word) {
+        return clamp(Math.round(word.length / 3), 1, 3);
+      }
+
+      // 在 [1, word.length - k] 中选一个起始位置（下标从0开始，index 0 首字母永远保留）
+      function pickChunkStart(word, k, excludeStart) {
+        const maxStart = word.length - k;
+        const candidates = [];
+        for (let s = 1; s <= maxStart; s++) {
+          if (s !== excludeStart) candidates.push(s);
+        }
+        if (candidates.length === 0) {
+          // 边界情况：词太短，找不到与第1轮不同的位置，直接复用
+          return excludeStart != null ? excludeStart : 1;
+        }
+        return candidates[Math.floor(Math.random() * candidates.length)];
+      }
+
+      function randomLetterExcept(exclude) {
+        const letters = "abcdefghijklmnopqrstuvwxyz";
+        let ch;
+        do {
+          ch = letters[Math.floor(Math.random() * letters.length)];
+        } while (ch === exclude);
+        return ch;
+      }
+
+      function generateDistractors(correct, count) {
+        const candidates = new Set();
+        // 1) 相邻字母互换
+        if (correct.length >= 2) {
+          for (let i = 0; i < correct.length - 1; i++) {
+            const arr = correct.split("");
+            [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+            const cand = arr.join("");
+            if (cand !== correct) candidates.add(cand);
+          }
+        }
+        // 2) 形近字母替换
+        const pairs = [
+          ["a", "e"],
+          ["e", "i"],
+          ["i", "y"],
+          ["o", "u"],
+          ["c", "k"],
+          ["s", "z"],
+          ["f", "v"],
+          ["m", "n"],
+          ["b", "d"],
+        ];
+        for (const [x, y] of pairs) {
+          for (let i = 0; i < correct.length; i++) {
+            const ch = correct[i];
+            let sub = null;
+            if (ch === x) sub = y;
+            else if (ch === y) sub = x;
+            if (sub) {
+              const arr = correct.split("");
+              arr[i] = sub;
+              const cand = arr.join("");
+              if (cand !== correct) candidates.add(cand);
+            }
+          }
+        }
+        // 3) 兜底：规则1、2 覆盖不到时（如重复字母 "pp"、生僻字母 "x"），随机替换一位生成，保证一定凑够干扰项数量
+        let guard = 0;
+        while (candidates.size < count && guard < 30) {
+          guard++;
+          const pos = Math.floor(Math.random() * correct.length);
+          const arr = correct.split("");
+          arr[pos] = randomLetterExcept(arr[pos]);
+          const cand = arr.join("");
+          if (cand !== correct) candidates.add(cand);
+        }
+        return shuffle(Array.from(candidates)).slice(0, count);
+      }
+
+      function buildBlankIndexSet(word, chunkStart, k) {
+        const set = new Set();
+        for (let i = chunkStart; i < chunkStart + k; i++) set.add(i);
+        return set;
+      }
+
+      function renderSpellRound() {
+        const w = currentWord();
+        const word = w.word;
+        const len = word.length;
+        const k = chunkLength(word);
+
+        document.getElementById("spellPhonetic").innerHTML =
+          `美 /${w.us}/ &nbsp;·&nbsp; 英 /${w.uk}/`;
+        document.getElementById("spellDef").innerHTML =
+          `<span class="pos-tag">${w.pos}</span>${w.def}`;
+
+        let blankSet;
+        if (round === 1) {
+          const start = pickChunkStart(word, k, null);
+          roundStartIndex = start;
+          blankSet = buildBlankIndexSet(word, start, k);
+        } else if (round === 2) {
+          const start = pickChunkStart(word, k, roundStartIndex);
+          blankSet = buildBlankIndexSet(word, start, k);
+        } else {
+          blankSet = new Set(Array.from({ length: len }, (_, i) => i)); // 第3轮：整词挖空
+        }
+
+        document.getElementById("roundIndicator").textContent = `第 ${round} / 3 轮`;
+
+        const box = document.getElementById("letterBoxes");
+        box.innerHTML = "";
+        currentBlanks = [];
+
+        for (let i = 0; i < len; i++) {
+          if (blankSet.has(i)) {
+            const input = document.createElement("input");
+            input.className = "letter-box blank";
+            input.maxLength = 1;
+            input.autocomplete = "off";
+            box.appendChild(input);
+            currentBlanks.push({ input, expected: word[i] });
+          } else {
+            const span = document.createElement("span");
+            span.className = "letter-box locked";
+            span.textContent = word[i];
+            box.appendChild(span);
+          }
+        }
+
+        currentBlanks.forEach(({ input }, idx) => {
+          input.addEventListener("input", () => {
+            if (input.value.length > 0) {
+              const nextBlank = currentBlanks[idx + 1];
+              if (nextBlank) nextBlank.input.focus();
+            }
+          });
+          input.addEventListener("keydown", (e) => {
+            if (e.code === "Backspace" && input.value === "" && idx > 0) {
+              e.preventDefault();
+              currentBlanks[idx - 1].input.focus();
+            } else if (e.code === "Enter") {
+              e.preventDefault();
+              submitSpelling();
+            }
+          });
+        });
+
+        // 提示块仅第1轮出现，纯视觉参考，不可点击
+        const hintSection = document.getElementById("hintSection");
+        if (round === 1) {
+          const correctChunk = word.slice(roundStartIndex, roundStartIndex + k);
+          const distractors = generateDistractors(correctChunk, 2);
+          const tiles = shuffle([correctChunk, ...distractors]);
+          hintSection.innerHTML =
+            '<div class="hint-label">参考字母（顺序已打乱，仅供参考，不可点击）</div>' +
+            tiles.map((t) => `<span class="hint-tile">${t}</span>`).join("");
+        } else {
+          hintSection.innerHTML = "";
+        }
+
+        if (currentBlanks[0]) setTimeout(() => currentBlanks[0].input.focus(), 30);
+        updateProgressUI();
+        speak(); // 每轮开始自动播放一次发音
+      }
+
+      function submitSpelling() {
+        if (currentBlanks.some((b) => b.input.value === "")) return; // 未填满，忽略
+        const allCorrect = currentBlanks.every(
+          (b) => b.input.value.toLowerCase() === b.expected.toLowerCase(),
+        );
+        if (allCorrect) {
+          currentBlanks.forEach((b) => b.input.classList.add("correct"));
+          setTimeout(() => {
+            if (round < 3) {
+              round++;
+              renderSpellRound();
+            } else {
+              round = 1;
+              roundStartIndex = null;
+              next();
+            }
+          }, 500);
+        } else {
+          currentBlanks.forEach((b) => b.input.classList.add("wrong"));
+          setTimeout(() => {
+            currentBlanks.forEach((b) => {
+              b.input.value = "";
+              b.input.classList.remove("wrong");
+            });
+            if (currentBlanks[0]) currentBlanks[0].input.focus();
+          }, 500);
+        }
+      }
+
+      // ==================== 模式切换 / 渲染分发 ====================
+
+      function renderForMode() {
+        if (mode === "flash") {
+          renderFlash();
+        } else {
+          round = 1;
+          roundStartIndex = null;
+          renderSpellRound();
+        }
+      }
+
+      function setMode(m) {
+        mode = m;
+        document.getElementById("tabFlash").classList.toggle("active", m === "flash");
+        document.getElementById("tabSpell").classList.toggle("active", m === "spell");
+        document.getElementById("flashStage").style.display = m === "flash" ? "" : "none";
+        document.getElementById("spellStage").style.display = m === "spell" ? "" : "none";
+        document.getElementById("flashActions").style.display = m === "flash" ? "" : "none";
+        document.getElementById("legendFlash").style.display = m === "flash" ? "" : "none";
+        document.getElementById("legendSpell").style.display = m === "spell" ? "" : "none";
+        document.getElementById("roundIndicator").textContent = "";
+        renderForMode();
+      }
+
+      // ==================== 全局键盘（学习流程全程无需鼠标） ====================
+
+      document.addEventListener("keydown", (e) => {
+        const activeIsInput = document.activeElement && document.activeElement.tagName === "INPUT";
+        if (mode === "flash") {
+          if (e.code === "Space") {
+            e.preventDefault();
+            flipCard();
+          } else if (e.code === "ArrowLeft") {
+            e.preventDefault();
+            mark("unknown");
+          } else if (e.code === "ArrowRight") {
+            e.preventDefault();
+            mark("known");
+          } else if (e.code === "KeyR") {
+            e.preventDefault();
+            speak();
+          }
+        } else {
+          // 拼写测试模式：字母格自己处理 Enter/Backspace；R 只在未聚焦输入框时触发重播，避免和字母 r 冲突
+          if (e.code === "KeyR" && !activeIsInput) {
+            e.preventDefault();
+            speak();
+          }
+        }
+      });
+
+      renderForMode();
+    </script>
+  </body>
+</html>
