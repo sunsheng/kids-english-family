@@ -148,6 +148,7 @@ npm run build
 - 词库调研：[docs/dictionary-and-wordbank-research.md](docs/dictionary-and-wordbank-research.md)
 - 词库导入：[docs/word-bank-import.md](docs/word-bank-import.md)
 - 测试方法与验收：[docs/testing-and-acceptance.md](docs/testing-and-acceptance.md)
+- 部署（Vercel + Neon）：[docs/deploy-vercel.md](docs/deploy-vercel.md)
 - 开发进度：[docs/progress.md](docs/progress.md)
 - 学习室键盘流程参照：[design/word-card-mockup.html](design/word-card-mockup.html)
 

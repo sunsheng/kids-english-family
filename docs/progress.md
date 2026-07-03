@@ -4,6 +4,15 @@
 
 ## 已完成
 
+- 2026-07-03 第三轮（体验优化 + 部署方案）：
+  1. **仪表盘学习日历重设计**：原 14 个匿名色块看不出日期,改为按「周一~周日」对齐的近两周迷你日历——星期表头 + 两行日期格(上周/本周),格内显示几号,今天描边高亮,未来日期虚线占位,悬停显示当天明细(`7月3日 · 新学 12 · 复习 8`),底部加「少→多」图例;色阶阈值改为 1–5/6–10/11–19/≥20(原来学 4 个词就到最深色)。
+  2. **全局单例声音播放器**：修复重复播、多播、两个声音叠播的问题。新增 `lib/audio-player.ts`,全应用共用一个 `<audio>` 实例,策略:(a) 后到优先——新请求先停掉正在播的再播新的;(b) 自动播放按 key 去重(1.2s 窗口),挡掉 effect 重复触发;(c) 手动重播不去重,总是打断重放;(d) 切换页面时 `stop()`。原先各页面各自 `new Audio()` 的调用点全部改走单例。
+  3. **学习卡片重做**：点击翻卡改为真正的 3D 翻转动画(正反两面 + `backface-visibility`,0.6s 缓动,尊重 `prefers-reduced-motion`);音标按词典惯例加中括号并做成胶囊样式(`formatPhonetic` 统一处理,学习/测试页共用);释义按词性标记拆行、词性做成彩色小标签(`splitDefinitionRows`,原来 `n. 盖；帽子 vt. 覆盖…` 挤成一行);背面换绿色调与正面(紫色调)区分「问题面/答案面」;超长单词自动换行,空音标不再渲染。
+  4. **部署方案确定（Vercel + Neon）**：开发机为每日释放的临时服务器,确定部署到 Vercel(GitHub 账号一键导入,push 即部署)+ Neon 免费档 PostgreSQL,数据用 `db/backup/kids_english_family.sql` 恢复;家庭自用规模全免费,唯一开销是自定义域名(国内访问 `*.vercel.app` 不通,必须绑)。完整步骤见 `docs/deploy-vercel.md`;`.env.example` 补充 `AUTH_SECRET`(公网部署必须设置,否则会话签名退回仓库里的公开默认密钥)。
+- 2026-07-03 第二轮后续（登录保持与移动端,提交 `e67ed2e`、`edb6bc2`）：
+  1. **刷新不退出登录**：登录改为 HMAC 签名 Cookie 会话(`lib/session.ts`,30 天有效期),新增 `/api/auth/me`、`/api/auth/logout`,刷新页面自动恢复登录态。
+  2. **移动端适配**：全站响应式调整(顶栏/侧边导航/卡片/拼写测试),拼写测试增加隐藏输入框以唤起手机虚拟键盘,手机端隐藏物理键盘快捷键提示。
+  3. 去掉学习/测试卡片外多余的重听按钮(卡内已有重听入口)。
 - 搭建 Docker PostgreSQL 开发环境。
 - 落地 `docs/database-schema.md` 中的初始数据库 schema。
 - 搭建 Next.js + TypeScript 前端框架。
@@ -55,7 +64,7 @@
 
 - `npm audit --omit=dev` 当前提示 Next.js 依赖链中的 `postcss` moderate 漏洞；npm 给出的自动修复需要破坏性版本变更，暂不执行。
 - `npm install pg` 后 `npm audit` 仍提示 2 个 moderate 漏洞，未执行破坏性自动修复。
-- 当前登录实现是本地 MVP：登录成功后前端携带 `userId` 调 API，尚未实现生产级 session/JWT。
+- 登录会话为 HMAC 签名 Cookie（`lib/session.ts`，30 天有效期，刷新不掉线）；密钥读 `AUTH_SECRET` 环境变量，本地开发可用内置回退密钥，公网部署必须设置。
 
 ## Phase 1 状态
 
@@ -74,4 +83,5 @@
 对应 PRD Phase 4：
 
 1. 继续内部测试键盘学习流程（重点:多版本教材切换、测试阶段推进）。
-2. 部署上线（本轮明确不做,仅本地开发验证）。
+2. 部署上线：方案已定（Vercel + Neon，见 `docs/deploy-vercel.md`），待在浏览器完成 Vercel 导入、Neon 创建、`AUTH_SECRET` 设置与数据导入。
+3. 部署后建议：GitHub Actions 定时 `pg_dump` 异地备份 Neon 数据。
