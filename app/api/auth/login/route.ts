@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
+import { createSessionValue, sessionCookieName, sessionMaxAgeSeconds } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -35,11 +36,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "邮箱或密码不正确。" }, { status: 401 });
   }
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     user: {
       id: user.id,
       email: user.email,
       nickname: user.nickname,
     },
   });
+  response.cookies.set({
+    name: sessionCookieName,
+    value: createSessionValue(user.id),
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: sessionMaxAgeSeconds,
+  });
+
+  return response;
 }

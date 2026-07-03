@@ -22,7 +22,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dictVoiceUrl, type Accent } from "@/lib/audio";
 import { createDrillRounds, maskedWord, type DrillRound } from "@/lib/spelling-drill";
 
@@ -309,6 +309,7 @@ function isRecommendedBook(book: WordBook, student: Student) {
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [loginEmail, setLoginEmail] = useState("demo@example.com");
   const [loginPassword, setLoginPassword] = useState("demo123456");
   const [loginError, setLoginError] = useState("");
@@ -535,6 +536,33 @@ export default function Home() {
     [reviewTestWord, submitReviewRecord, submitTestWordRecord],
   );
 
+  // 刷新页面后通过会话 cookie 恢复登录状态,避免每次都要重新登录。
+  useEffect(() => {
+    let cancelled = false;
+
+    async function restoreSession() {
+      try {
+        const data = await readJson<{ user: User | null }>(await fetch("/api/auth/me"));
+
+        if (data.user && !cancelled) {
+          setUser(data.user);
+          await loadProfile(data.user);
+        }
+      } catch {
+        // 会话失效时停留在登录页即可。
+      } finally {
+        if (!cancelled) {
+          setIsRestoringSession(false);
+        }
+      }
+    }
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadProfile]);
+
   useEffect(() => {
     if (activeView !== "learning") {
       return;
@@ -689,10 +717,19 @@ export default function Home() {
   }
 
   function handleLogout() {
+    void fetch("/api/auth/logout", { method: "POST" });
     setUser(null);
     setActiveStudent(null);
     setWordBooks([]);
     setActiveView("dashboard");
+  }
+
+  if (isRestoringSession) {
+    return (
+      <main className="login-page">
+        <p className="session-loading">正在进入学习空间…</p>
+      </main>
+    );
   }
 
   if (!user) {
@@ -1401,6 +1438,7 @@ function SpellingDrill({
   word: string;
 }) {
   const rounds = useMemo(() => createDrillRounds(word), [word]);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [roundIndex, setRoundIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
   const [hadError, setHadError] = useState(false);
@@ -1455,6 +1493,11 @@ function SpellingDrill({
         return;
       }
 
+      // 拼写输入框(移动端虚拟键盘)自己处理输入,避免重复录入。
+      if (event.target instanceof HTMLInputElement) {
+        return;
+      }
+
       if (/^[a-zA-Z]$/.test(event.key)) {
         event.preventDefault();
         setAnswers((current) => {
@@ -1495,22 +1538,49 @@ function SpellingDrill({
         </div>
         <span>{hadError ? "本词已出现错误，将按答错调度复习。" : "三轮零错误才算答对。"}</span>
       </div>
-      <div className="letter-grid" aria-label="字母格">
-        {cells.map(({ answer, index, letter }) => {
-          if (letter) {
+      <div className="letter-grid-wrap">
+        <div className="letter-grid" aria-label="字母格">
+          {cells.map(({ answer, index, letter }) => {
+            if (letter) {
+              return (
+                <span className="letter-cell fixed" key={`${letter}-${index}`}>
+                  {letter}
+                </span>
+              );
+            }
+
             return (
-              <span className="letter-cell fixed" key={`${letter}-${index}`}>
-                {letter}
+              <span className="letter-cell blank" key={`blank-${index}`}>
+                {answer}
               </span>
             );
-          }
-
-          return (
-            <span className="letter-cell blank" key={`blank-${index}`}>
-              {answer}
-            </span>
-          );
-        })}
+          })}
+        </div>
+        <input
+          aria-label="拼写输入"
+          autoCapitalize="none"
+          autoComplete="off"
+          autoCorrect="off"
+          className="drill-input"
+          disabled={disabled}
+          enterKeyHint="done"
+          onChange={(event) => {
+            const letters = event.target.value
+              .toLowerCase()
+              .replace(/[^a-z]/g, "")
+              .slice(0, round.length);
+            setAnswers(letters.split(""));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              submitRound();
+            }
+          }}
+          ref={inputRef}
+          spellCheck={false}
+          value={answers.join("")}
+        />
       </div>
       {round.prompt.length > 0 ? (
         <div className="prompt-row" aria-label="提示块">
