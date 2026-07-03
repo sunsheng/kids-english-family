@@ -14,12 +14,10 @@ import {
   LogOut,
   Pencil,
   Play,
-  Plus,
   RotateCcw,
   Search,
   Settings,
   Sparkles,
-  Trash2,
   UserRound,
   Volume2,
   X,
@@ -201,14 +199,6 @@ const gradeBookKeywords: Record<string, string[]> = {
   高三: ["高三", "必修", "选修"],
 };
 
-const defaultStudentForm: StudentFormState = {
-  name: "",
-  schoolStage: "primary",
-  gradeLabel: "五年级",
-  preferredAccent: "us",
-  preferredPublisher: "",
-};
-
 async function readJson<T>(response: Response): Promise<T> {
   const data = (await response.json()) as T & { error?: string };
 
@@ -322,8 +312,7 @@ export default function Home() {
   const [loginEmail, setLoginEmail] = useState("demo@example.com");
   const [loginPassword, setLoginPassword] = useState("demo123456");
   const [loginError, setLoginError] = useState("");
-  const [students, setStudents] = useState<Student[]>([]);
-  const [activeStudentId, setActiveStudentId] = useState("");
+  const [activeStudent, setActiveStudent] = useState<Student | null>(null);
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [wordBooks, setWordBooks] = useState<WordBook[]>([]);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -340,7 +329,6 @@ export default function Home() {
   const [isSubmittingRecord, setIsSubmittingRecord] = useState(false);
   const [appError, setAppError] = useState("");
 
-  const activeStudent = students.find((student) => student.id === activeStudentId) ?? null;
   const activePlanBook = wordBooks.find((book) => book.plan_status === "in_progress");
   const todayTarget = activePlanBook?.daily_new_word_count ?? 0;
   const todayDone = dashboardData?.summary.today_new_words ?? 0;
@@ -379,22 +367,34 @@ export default function Home() {
     [vocabularyKeyword],
   );
 
-  const loadStudents = useCallback(
-    async (userId: string, preferredStudentId?: string) => {
+  // 一个账号对应一名学员:取账号下的学习档案,首次登录自动创建。
+  const loadProfile = useCallback(
+    async (currentUser: User) => {
       const data = await readJson<{ students: Student[] }>(
-        await fetch(`/api/students?userId=${userId}`),
+        await fetch(`/api/students?userId=${currentUser.id}`),
       );
-      const nextStudentId =
-        data.students.find((student) => student.id === preferredStudentId)?.id ??
-        data.students[0]?.id ??
-        "";
+      let profile = data.students[0] ?? null;
 
-      setStudents(data.students);
-      setActiveStudentId(nextStudentId);
-
-      if (nextStudentId) {
-        await Promise.all([loadWordBooks(nextStudentId), loadDashboard(nextStudentId)]);
+      if (!profile) {
+        const created = await readJson<{ student: Student }>(
+          await fetch("/api/students", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: currentUser.id,
+              name: currentUser.nickname ?? "小学员",
+              schoolStage: "primary",
+              gradeLabel: "三年级",
+              preferredAccent: "us",
+              preferredPublisher: "",
+            }),
+          }),
+        );
+        profile = created.student;
       }
+
+      setActiveStudent(profile);
+      await Promise.all([loadWordBooks(profile.id), loadDashboard(profile.id)]);
     },
     [loadDashboard, loadWordBooks],
   );
@@ -593,24 +593,22 @@ export default function Home() {
         }),
       );
       setUser(data.user);
-      await loadStudents(data.user.id);
+      await loadProfile(data.user);
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : "登录失败。");
     }
   }
 
-  async function saveStudent(event: React.FormEvent<HTMLFormElement>) {
+  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user || !studentForm) {
+    if (!user || !studentForm?.id) {
       return;
     }
 
-    const isEditing = Boolean(studentForm.id);
-    const response = await fetch(isEditing ? `/api/students/${studentForm.id}` : "/api/students", {
-      method: isEditing ? "PATCH" : "POST",
+    const response = await fetch(`/api/students/${studentForm.id}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userId: user.id,
         name: studentForm.name,
         schoolStage: studentForm.schoolStage,
         gradeLabel: studentForm.gradeLabel,
@@ -621,24 +619,10 @@ export default function Home() {
 
     try {
       const data = await readJson<{ student: Student }>(response);
-      await loadStudents(user.id, data.student.id);
+      setActiveStudent(data.student);
       setStudentForm(null);
     } catch (error) {
-      setAppError(error instanceof Error ? error.message : "保存学员失败。");
-    }
-  }
-
-  async function deleteStudent(studentId: string) {
-    if (!user || students.length <= 1) {
-      setAppError("至少保留一名学员。");
-      return;
-    }
-
-    try {
-      await readJson(await fetch(`/api/students/${studentId}`, { method: "DELETE" }));
-      await loadStudents(user.id);
-    } catch (error) {
-      setAppError(error instanceof Error ? error.message : "删除学员失败。");
+      setAppError(error instanceof Error ? error.message : "保存学习档案失败。");
     }
   }
 
@@ -664,28 +648,6 @@ export default function Home() {
       await loadNextWord(activeStudent);
     } catch (error) {
       setAppError(error instanceof Error ? error.message : "开启计划失败。");
-    }
-  }
-
-  async function switchStudent(student: Student) {
-    setActiveStudentId(student.id);
-    setReviewTestWord(null);
-    await Promise.all([loadWordBooks(student.id), loadDashboard(student.id)]);
-
-    if (activeView === "learning") {
-      await loadNextWord(student);
-    }
-
-    if (activeView === "test") {
-      await loadNextTestWord(student);
-    }
-
-    if (activeView === "review") {
-      await loadReviews(student.id);
-    }
-
-    if (activeView === "vocabulary") {
-      await loadVocabulary(student.id);
     }
   }
 
@@ -728,9 +690,8 @@ export default function Home() {
 
   function handleLogout() {
     setUser(null);
-    setStudents([]);
+    setActiveStudent(null);
     setWordBooks([]);
-    setActiveStudentId("");
     setActiveView("dashboard");
   }
 
@@ -747,8 +708,8 @@ export default function Home() {
             <Sparkles size={26} />
           </span>
           <p className="eyebrow">少儿英语·家庭版</p>
-          <h1>家长登录</h1>
-          <p className="login-sub">一个家庭账号，管理全家孩子的英语学习。</p>
+          <h1>登录</h1>
+          <p className="login-sub">一个账号一名学员，专注自己的英语学习。</p>
           <label>
             邮箱
             <input
@@ -795,42 +756,23 @@ export default function Home() {
 
       <div className="workspace">
         <aside className="sidebar" aria-label="主导航">
-          <section className="student-section" aria-labelledby="students-title">
-            <div className="student-title-row">
-              <h2 id="students-title">家庭学员</h2>
-              <button
-                aria-label="新增学员"
-                className="icon-action"
-                onClick={() => setStudentForm(defaultStudentForm)}
-                type="button"
-              >
-                <Plus aria-hidden="true" size={18} />
-              </button>
-            </div>
-            <div className="student-list">
-              {students.map((student) => (
-                <button
-                  className={
-                    student.id === activeStudentId ? "student-card active" : "student-card"
-                  }
-                  key={student.id}
-                  onClick={() => void switchStudent(student)}
-                  type="button"
-                >
-                  <span className="avatar" aria-hidden="true">
-                    {initials(student.name)}
-                  </span>
-                  <span>
-                    <strong>{student.name}</strong>
-                    <small>
-                      {stageLabels[student.school_stage]}
-                      {student.grade_label} · {student.preferred_accent === "us" ? "美音" : "英音"}
-                    </small>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
+          {activeStudent ? (
+            <section className="student-section" aria-label="学习档案">
+              <div className="student-card active">
+                <span className="avatar" aria-hidden="true">
+                  {initials(activeStudent.name)}
+                </span>
+                <span>
+                  <strong>{activeStudent.name}</strong>
+                  <small>
+                    {stageLabels[activeStudent.school_stage]}
+                    {activeStudent.grade_label} ·{" "}
+                    {activeStudent.preferred_accent === "us" ? "美音" : "英音"}
+                  </small>
+                </span>
+              </div>
+            </section>
+          ) : null}
 
           <nav className="nav-list" aria-label="功能导航">
             {navItems.map((item) => {
@@ -926,22 +868,20 @@ export default function Home() {
           ) : null}
           {activeView === "settings" ? (
             <SettingsPanel
-              activeStudentId={activeStudentId}
-              onAddStudent={() => setStudentForm(defaultStudentForm)}
-              onDeleteStudent={(studentId) => void deleteStudent(studentId)}
-              onEditStudent={(student) =>
-                setStudentForm({
-                  id: student.id,
-                  name: student.name,
-                  schoolStage: student.school_stage,
-                  gradeLabel: student.grade_label,
-                  preferredAccent: student.preferred_accent,
-                  preferredPublisher: student.preferred_publisher,
-                })
-              }
+              onEditProfile={() => {
+                if (activeStudent) {
+                  setStudentForm({
+                    id: activeStudent.id,
+                    name: activeStudent.name,
+                    schoolStage: activeStudent.school_stage,
+                    gradeLabel: activeStudent.grade_label,
+                    preferredAccent: activeStudent.preferred_accent,
+                    preferredPublisher: activeStudent.preferred_publisher,
+                  });
+                }
+              }}
               onLogout={handleLogout}
-              onSwitchStudent={(student) => void switchStudent(student)}
-              students={students}
+              student={activeStudent}
               user={user}
               wordBooks={wordBooks}
             />
@@ -954,7 +894,7 @@ export default function Home() {
           form={studentForm}
           onChange={setStudentForm}
           onClose={() => setStudentForm(null)}
-          onSubmit={(event) => void saveStudent(event)}
+          onSubmit={(event) => void saveProfile(event)}
           publishers={publisherOptions(wordBooks)}
         />
       ) : null}
@@ -1762,23 +1702,15 @@ function StatsPanel({
 }
 
 function SettingsPanel({
-  activeStudentId,
-  onAddStudent,
-  onDeleteStudent,
-  onEditStudent,
+  onEditProfile,
   onLogout,
-  onSwitchStudent,
-  students,
+  student,
   user,
   wordBooks,
 }: {
-  activeStudentId: string;
-  onAddStudent: () => void;
-  onDeleteStudent: (studentId: string) => void;
-  onEditStudent: (student: Student) => void;
+  onEditProfile: () => void;
   onLogout: () => void;
-  onSwitchStudent: (student: Student) => void;
-  students: Student[];
+  student: Student | null;
   user: User;
   wordBooks: WordBook[];
 }) {
@@ -1790,27 +1722,20 @@ function SettingsPanel({
         <div>
           <p className="eyebrow">Settings</p>
           <h2 id="settings-title">用户设置</h2>
-          <p>一个家庭账号管理多名学员：设置学段、年级和教材版本后，选词库会自动筛选。</p>
+          <p>设置学段、年级和教材版本后，选词库会按设置自动筛选。</p>
         </div>
-        <button className="primary-action" onClick={onAddStudent} type="button">
-          <Plus aria-hidden="true" size={22} />
-          新增学员
+        <button className="primary-action" onClick={onEditProfile} type="button">
+          <Pencil aria-hidden="true" size={22} />
+          编辑学习档案
         </button>
       </section>
 
-      <section className="settings-section" aria-labelledby="settings-students-title">
-        <h3 id="settings-students-title">学员档案</h3>
-        <div className="settings-student-list">
-          {students.map((student) => (
-            <article
-              className={`settings-student-card ${student.id === activeStudentId ? "active" : ""}`}
-              key={student.id}
-            >
-              <button
-                className="settings-student-main"
-                onClick={() => onSwitchStudent(student)}
-                type="button"
-              >
+      <section className="settings-section" aria-labelledby="settings-profile-title">
+        <h3 id="settings-profile-title">学习档案</h3>
+        {student ? (
+          <div className="settings-student-list">
+            <article className="settings-student-card active">
+              <div className="settings-student-main">
                 <span className="avatar" aria-hidden="true">
                   {initials(student.name)}
                 </span>
@@ -1822,31 +1747,22 @@ function SettingsPanel({
                     {student.preferred_publisher || "教材版本不限"}
                   </small>
                 </span>
-                {student.id === activeStudentId ? <em className="current-chip">当前学员</em> : null}
-              </button>
+              </div>
               <div className="student-actions">
                 <button
-                  aria-label={`编辑 ${student.name}`}
+                  aria-label="编辑学习档案"
                   className="icon-action"
-                  onClick={() => onEditStudent(student)}
+                  onClick={onEditProfile}
                   type="button"
                 >
                   <Pencil aria-hidden="true" size={16} />
                 </button>
-                <button
-                  aria-label={`删除 ${student.name}`}
-                  className="icon-action danger"
-                  onClick={() => onDeleteStudent(student.id)}
-                  type="button"
-                >
-                  <Trash2 aria-hidden="true" size={16} />
-                </button>
               </div>
             </article>
-          ))}
-        </div>
+          </div>
+        ) : null}
         <p className="settings-hint">
-          学习进度、测试进度、生词本都按学员独立保存；同一学员在不同词书（不同版本/学期）之间切换时，各词书进度互不影响。
+          学习进度、测试进度、生词本按账号独立保存；在不同词书（不同版本/学期）之间切换时，各词书进度互不影响。
         </p>
       </section>
 
@@ -1856,7 +1772,7 @@ function SettingsPanel({
           <div className="settings-account-row">
             <UserRound aria-hidden="true" size={20} />
             <div>
-              <strong>{user.nickname ?? "家长"}</strong>
+              <strong>{user.nickname ?? "学员"}</strong>
               <small>{user.email}</small>
             </div>
           </div>
@@ -1904,8 +1820,8 @@ function StudentDialog({
         <button aria-label="关闭" className="dialog-close" onClick={onClose} type="button">
           <X aria-hidden="true" size={22} />
         </button>
-        <p className="eyebrow">学员档案</p>
-        <h3 id="student-dialog-title">{form.id ? "编辑学员" : "新增学员"}</h3>
+        <p className="eyebrow">学习档案</p>
+        <h3 id="student-dialog-title">编辑学习档案</h3>
         <label>
           姓名
           <input

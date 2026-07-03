@@ -13,7 +13,6 @@ const pool = new Pool({
 });
 
 test.beforeEach(async () => {
-  await pool.query("UPDATE students SET deleted_at = now() WHERE name LIKE '测试学员%'");
   await pool.query(
     "DELETE FROM learning_records WHERE student_id = '10000000-0000-0000-0000-000000000001'",
   );
@@ -67,15 +66,12 @@ async function completeSpellingDrill(page: import("@playwright/test").Page, word
 }
 
 test.afterAll(async () => {
-  await pool.query("UPDATE students SET deleted_at = now() WHERE name LIKE '测试学员%'");
   await pool.end();
 });
 
 test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) => {
-  const studentName = `测试学员${Date.now().toString().slice(-4)}`;
-
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "家长登录" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "登录" })).toBeVisible();
   await page.screenshot({ path: "test-results/phase2-ui/01-login.png", fullPage: true });
 
   await page.getByLabel("邮箱").fill("demo@example.com");
@@ -85,26 +81,9 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
   await expect(page.getByText("当前学员：小明")).toBeVisible();
   await page.screenshot({ path: "test-results/phase2-ui/02-dashboard.png", fullPage: true });
 
-  await page.getByRole("button", { name: "新增学员" }).click();
-  await expect(page.getByRole("heading", { name: "新增学员" })).toBeVisible();
-  await page.getByLabel("姓名").fill(studentName);
-  await page.getByLabel("学段").selectOption("senior");
-  await page.getByLabel("年级").selectOption("高一");
-  await page.getByLabel("发音偏好").selectOption("uk");
-  await page.screenshot({
-    path: "test-results/phase2-ui/03-student-form-filled.png",
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "保存" }).click();
-  await expect(page.getByRole("button", { name: `${studentName} 高中高一 · 英音` })).toBeVisible();
-  await page.screenshot({ path: "test-results/phase2-ui/04-student-created.png", fullPage: true });
-
-  await page.getByRole("button", { name: "小明 小学五年级 · 美音" }).click();
-  await expect(page.getByText("当前学员：小明")).toBeVisible();
-
   await page.getByRole("button", { name: "选词库" }).click();
   await expect(page.getByRole("heading", { name: "选词库" })).toBeVisible();
-  // 默认按学员设置(小学五年级)推荐词书,可切换查看全部
+  // 默认按学习档案(小学五年级)推荐词书,可切换查看全部
   await expect(page.getByRole("button", { name: "推荐词书" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "人教版五年级上册", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "仁爱版初中英语七年级上册" })).toHaveCount(0);
@@ -192,13 +171,23 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
   await expect(page.getByText("待复习")).toBeVisible();
   await page.screenshot({ path: "test-results/phase2-ui/13-stats.png", fullPage: true });
 
-  // 学员管理已移入设置页
+  // 设置页:一个账号只有一份学习档案,可编辑学段/年级/教材版本/口音
   await page.getByRole("button", { name: "设置" }).click();
   await expect(page.getByRole("heading", { name: "用户设置" })).toBeVisible();
-  await expect(page.getByText("学员档案")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "学习档案" })).toBeVisible();
+  await page.getByRole("button", { name: "编辑学习档案" }).first().click();
+  await expect(page.getByRole("heading", { name: "编辑学习档案" })).toBeVisible();
+  await expect(page.getByLabel("教材版本")).toBeVisible();
+  await page.getByLabel("教材版本").selectOption("人教版");
+  await page.getByRole("button", { name: "保存" }).click();
+  await expect(page.getByText("小学五年级 · 美音 · 人教版")).toBeVisible();
   await page.screenshot({ path: "test-results/phase2-ui/14-settings.png", fullPage: true });
-  await page.getByRole("button", { name: `删除 ${studentName}` }).click();
-  await expect(page.getByText(studentName)).toHaveCount(0);
+
+  // 恢复教材版本为不限,避免影响其他用例
+  await page.getByRole("button", { name: "编辑学习档案" }).first().click();
+  await page.getByLabel("教材版本").selectOption("");
+  await page.getByRole("button", { name: "保存" }).click();
+  await expect(page.getByText("小学五年级 · 美音 · 教材版本不限")).toBeVisible();
 });
 
 test("study progress is kept per book when switching between books", async ({ page }) => {

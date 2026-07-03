@@ -148,10 +148,10 @@ VALUES (
 )
 ON CONFLICT DO NOTHING;
 
+-- 一个账号对应一名学员(学习档案)
 INSERT INTO students (id, user_id, name, school_stage, grade_label, sort_order, preferred_accent)
 VALUES
-    ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', '小明', 'primary', '五年级', 0, 'us'),
-    ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', '小红', 'junior', '初一', 1, 'uk')
+    ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', '小明', 'primary', '五年级', 0, 'us')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO word_books (id, name, category, stage, publisher, description, total_words)
@@ -221,6 +221,5 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO student_stats (student_id)
 VALUES
-    ('10000000-0000-0000-0000-000000000001'),
-    ('10000000-0000-0000-0000-000000000002')
+    ('10000000-0000-0000-0000-000000000001')
 ON CONFLICT DO NOTHING;
