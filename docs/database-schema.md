@@ -8,6 +8,7 @@
 - **单词库与学员进度分离**：`words` 是全局共享词库（同一个单词不会因为出现在多本词书里而重复存储），`word_book_entries` 负责"某个词属于哪本词书的第几单元/第几位"，`learning_records` 负责"某个学员对某个单词学到什么程度"。这样人教版和外研版共有的单词、以及"中考1600"和某教材重合的单词，不会产生脏数据。
 - **复习算法落在 `learning_records` 一张表上**，采用简化版 SM-2（艾宾浩斯曲线的工程实现，逻辑比原版 SM-2 简单，够用且好维护），不用单独建"复习队列"表——复习任务=`WHERE next_review_at <= today`的一条 SQL。
 - **生词本不是独立数据**，是 `learning_records.is_in_vocab_book = true` 的一个视图/筛选条件，这样"不认识"的词依然能继续参与复习调度，避免数据割裂。
+- **学习进度与测试进度完全隔离**：`study_plans.cursor_order_index` 只被"开始学习"推进；拼写测试用独立的 `test_progress` 表（学员 x 词书 一条游标），按"一阶段一阶段"(默认每 10 词一个阶段)顺序推进。不同学段/学期/版本对应不同词书，因此两类进度天然按词书隔离，切换词书后再切回进度保留。
 - **打卡日历/统计做了轻量冗余**（`daily_study_logs` + `student_stats`），因为仪表盘要求"极简、无多余请求"，用聚合查询现算连续打卡天数在数据量大了以后不划算，提前做缓存表更省心，且不违反"避免过度设计"——这是本产品明确写在需求里的展示项，不是假设的未来需求。
 
 ## 2. ER 关系图
@@ -25,6 +26,8 @@ erDiagram
     words ||--o{ word_book_entries : "被引用"
     words ||--o{ learning_records : "被学习"
     word_books ||--o{ study_plans : "被选为学习计划"
+    students ||--o{ test_progress : "测试进度"
+    word_books ||--o{ test_progress : "被测试"
 ```
 
 ## 3. 建表 DDL
@@ -55,6 +58,7 @@ CREATE TABLE students (
     grade_label         varchar(20) NOT NULL,          -- 展示用，如"五年级""初一"
     sort_order          smallint NOT NULL DEFAULT 0,   -- 侧边栏头像排序
     preferred_accent    accent_preference NOT NULL DEFAULT 'us', -- 卡片自动发音据此选择美式/英式音频
+    preferred_publisher varchar(50) NOT NULL DEFAULT '',         -- 教材版本偏好(如"人教版"),空串=不限,用于选词库自动筛选
     created_at          timestamptz NOT NULL DEFAULT now(),
     updated_at          timestamptz NOT NULL DEFAULT now(),
     deleted_at          timestamptz                     -- 软删除，保留历史学习数据
@@ -183,6 +187,17 @@ CREATE TABLE student_stats (
     longest_streak_days   integer NOT NULL DEFAULT 0,
     last_study_date       date,
     updated_at            timestamptz NOT NULL DEFAULT now()
+);
+
+-- ========== 11. 拼写测试进度（与学习进度隔离,按 学员 x 词书 独立推进） ==========
+CREATE TABLE test_progress (
+    id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id          uuid NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    word_book_id        uuid NOT NULL REFERENCES word_books(id) ON DELETE CASCADE,
+    cursor_order_index  integer NOT NULL DEFAULT 0,   -- 已完成测试到词书的第几个词
+    stage_size          smallint NOT NULL DEFAULT 10, -- "一阶段"包含的词数
+    updated_at          timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_test_progress_student_book UNIQUE (student_id, word_book_id)
 );
 ```
 

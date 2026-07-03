@@ -1,6 +1,6 @@
 # 开发进度
 
-更新时间：2026-07-01
+更新时间：2026-07-03
 
 ## 已完成
 
@@ -27,17 +27,26 @@
   3. 选词库去掉"每日新词量（10/20/30）"选择弹窗：点击词书卡片直接开启/继续计划并进入学习室，每日目标改为系统固定默认值（20），仅用于仪表盘"今日任务"展示。
   4. 测试页拼写练习的重听快捷键从 `R` 改为 `Arrow Up`：原来的 `R` 键和拼写作答里输入字母 r 会互相冲突（单词含 r 时按 R 既会重听又会被当成输入），改用方向键后与学习室重听快捷键保持一致，且不占用字母输入。
 
+- 2026-07-03 一轮大更新：
+  1. **全量词库**：新增 `--only=english` 构建模式，从 `lilinji/English` 导入 19 个教材版本全套中小学教材 + 中考/高考词表，共 354 本词书、19811 个单词、241563 条词书条目（含 Phase 2 种子共 358 本）；`inferPublisher` 补充教科版识别。
+  2. **发音 API 更换**：`dictionaryapi.dev`（境外、国内访问慢）替换为有道 dictvoice（国内直连、免注册免 Key，`type=1` 英音 / `type=2` 美音），音标改读本地词库；学习/测试页不再额外发起境外请求。
+  3. **用户设置页**：新增「设置」视图，学员档案管理（新增/编辑/删除/切换）从侧边栏移入设置页；学员新增「教材版本」偏好（`students.preferred_publisher`），年级改为按学段联动的下拉选择。
+  4. **词库自动筛选**：「选词库」按学员设置（学段 + 年级 + 教材版本）自动筛选推荐词书（考纲词汇只按学段），支持切换「全部词书」、按学段/版本筛选和关键词搜索。
+  5. **测试进度与学习进度隔离（bug 修复）**：原实现中"开始测试"直接消费学习队列并推进 `study_plans.cursor_order_index`，导致测试会吃掉学习进度。现在新增 `test_progress` 表（学员 x 词书 一条游标）和 `/api/testing/next`、`/api/testing/records`，测试按词书顺序"一阶段一阶段"（默认 10 词/阶段）独立推进，不同学段/学期/版本的词书各自隔离；完成测试仍更新 SM-2 复习调度与统计，但绝不触碰学习游标。
+  6. **UI 现代化**：整体重做配色（靛蓝-紫渐变主色、清新绿/珊瑚红辅助色）、圆角卡片、柔和阴影、毛玻璃顶栏/登录卡片，加入适度动效（页面淡入、卡片浮起、单词卡 pop-in、拼写错误抖动、进度条缓动、登录页漂浮气泡），并尊重 `prefers-reduced-motion`；保留儿童友好的大字号与间距。
+  7. **数据库迁移**：新增 `db/init/002_settings_and_test_progress.sql`（`students.preferred_publisher` + `test_progress` 表）。
+  8. E2E 扩展：覆盖词库推荐筛选/全部切换与搜索、测试进度不影响学习进度、切换词书后进度各自保留（学到 2/6 -> 学到 1/3 -> 切回仍是 2/6）、设置页删除学员。
+
 ## 当前验证
 
 - `npm run lint`
 - `npm run format:check`
 - `npm run typecheck`
 - `npm run wordbank:validate`
-- `npm run wordbank:build:pep` + `npm run wordbank:validate:full`（人教版全套词库校验）
+- `node scripts/build-full-word-bank.mjs --only=english` + `npm run wordbank:validate:full` + `npm run wordbank:import:full`（19 版本全套词库实导）
 - `npm run build`
-- `npm run test:e2e`
-- Docker PostgreSQL health check（当前环境 Docker socket 权限不足，未能执行）
-- 数据库 schema 表数量检查（当前环境 Docker socket 权限不足，未能执行）
+- `npm run test:e2e`（2 个用例全部通过,本机 apt 安装 PostgreSQL 18 实库验证）
+- API 手动冒烟：登录、学员、`/api/testing/next`、`/api/testing/records`（确认测试游标推进而学习游标不动）、`/api/words/:word` 返回有道音频 URL
 
 ## 已知事项
 
@@ -61,5 +70,5 @@
 
 对应 PRD Phase 4：
 
-1. 内部测试键盘学习流程。
-2. 部署上线。
+1. 继续内部测试键盘学习流程（重点:多版本教材切换、测试阶段推进）。
+2. 部署上线（本轮明确不做,仅本地开发验证）。

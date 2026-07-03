@@ -43,6 +43,7 @@ const counters = {
 };
 
 const onlyPep = process.argv.includes("--only=pep");
+const onlyEnglish = process.argv.includes("--only=english");
 
 function main() {
   mkdirSync(SOURCE_DIR, { recursive: true });
@@ -51,6 +52,8 @@ function main() {
 
   if (onlyPep) {
     addLilinjiEnglish({ onlyPep: true });
+  } else if (onlyEnglish) {
+    addLilinjiEnglish();
   } else {
     addEcdict();
     addDictionaryData();
@@ -109,7 +112,8 @@ function main() {
 }
 
 function prepareSources() {
-  for (const [name, url] of REPOS) {
+  const neededRepos = onlyPep || onlyEnglish ? REPOS.filter(([name]) => name === "English") : REPOS;
+  for (const [name, url] of neededRepos) {
     const target = join(SOURCE_DIR, name);
     if (exists(target)) {
       continue;
@@ -496,6 +500,7 @@ function inferPublisher(text) {
     ["译林", "译林版"],
     ["剑桥", "剑桥版"],
     ["科普", "科普版"],
+    ["教科", "教科版"],
     ["湘少", "湘少版"],
     ["闽教", "闽教版"],
     ["北京", "北京版"],

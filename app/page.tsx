@@ -17,16 +17,21 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Settings,
+  Sparkles,
   Trash2,
+  UserRound,
   Volume2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { dictVoiceUrl, type Accent } from "@/lib/audio";
 import { createDrillRounds, maskedWord, type DrillRound } from "@/lib/spelling-drill";
 
-type ViewKey = "dashboard" | "library" | "learning" | "test" | "review" | "vocabulary" | "stats";
+type ViewKey =
+  "dashboard" | "library" | "learning" | "test" | "review" | "vocabulary" | "stats" | "settings";
 type SchoolStage = "primary" | "junior" | "senior";
-type AccentPreference = "us" | "uk";
+type AccentPreference = Accent;
 
 type User = {
   id: string;
@@ -41,6 +46,7 @@ type Student = {
   school_stage: SchoolStage;
   grade_label: string;
   preferred_accent: AccentPreference;
+  preferred_publisher: string;
   sort_order: number;
 };
 
@@ -63,6 +69,24 @@ type LearningWord = {
   word_book_name: string;
   total_words: number;
   cursor_order_index: number;
+  entry_order_index: number;
+  word_id: string;
+  spelling: string;
+  phonetic_us: string | null;
+  phonetic_uk: string | null;
+  audio_us_url: string | null;
+  audio_uk_url: string | null;
+  definitions: { pos?: string; meaning: string }[];
+  example_sentence: string | null;
+  example_translation: string | null;
+};
+
+type TestWord = {
+  word_book_id: string;
+  word_book_name: string;
+  total_words: number;
+  test_cursor: number;
+  stage_size: number;
   entry_order_index: number;
   word_id: string;
   spelling: string;
@@ -133,9 +157,10 @@ type StudentFormState = {
   schoolStage: SchoolStage;
   gradeLabel: string;
   preferredAccent: AccentPreference;
+  preferredPublisher: string;
 };
 
-const navItems = [
+const navItems: { key: ViewKey; label: string; icon: typeof HomeIcon }[] = [
   { key: "dashboard", label: "仪表盘", icon: HomeIcon },
   { key: "library", label: "选词库", icon: LibraryBig },
   { key: "learning", label: "开始学习", icon: Play },
@@ -143,6 +168,7 @@ const navItems = [
   { key: "review", label: "复习中心", icon: RotateCcw },
   { key: "vocabulary", label: "生词本", icon: ListChecks },
   { key: "stats", label: "统计", icon: BarChart3 },
+  { key: "settings", label: "设置", icon: Settings },
 ];
 
 const DEFAULT_DAILY_NEW_WORD_COUNT = 20;
@@ -153,11 +179,34 @@ const stageLabels: Record<SchoolStage, string> = {
   senior: "高中",
 };
 
+const gradeOptions: Record<SchoolStage, string[]> = {
+  primary: ["一年级", "二年级", "三年级", "四年级", "五年级", "六年级"],
+  junior: ["初一", "初二", "初三"],
+  senior: ["高一", "高二", "高三"],
+};
+
+// 年级 -> 词书名称匹配关键词。高中教材按 必修/选择性必修 组织,按年级近似映射。
+const gradeBookKeywords: Record<string, string[]> = {
+  一年级: ["一年级"],
+  二年级: ["二年级"],
+  三年级: ["三年级"],
+  四年级: ["四年级"],
+  五年级: ["五年级"],
+  六年级: ["六年级"],
+  初一: ["七年级", "初一"],
+  初二: ["八年级", "初二"],
+  初三: ["九年级", "初三"],
+  高一: ["必修", "高一"],
+  高二: ["选择性必修", "选修", "高二"],
+  高三: ["高三", "必修", "选修"],
+};
+
 const defaultStudentForm: StudentFormState = {
   name: "",
   schoolStage: "primary",
   gradeLabel: "五年级",
   preferredAccent: "us",
+  preferredPublisher: "",
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -219,20 +268,53 @@ function createHeatmapLevels(days: DashboardData["heatmap"]) {
   return levels;
 }
 
-function getWordAudio(word: LearningWord | ReviewWord, student: Student | null) {
-  if (!student) {
-    return null;
-  }
+type AudioWord = {
+  spelling: string;
+  phonetic_us: string | null;
+  phonetic_uk: string | null;
+  audio_us_url: string | null;
+  audio_uk_url: string | null;
+};
 
-  return student.preferred_accent === "uk" ? word.audio_uk_url : word.audio_us_url;
+// 优先使用词库自带音频,否则回退到有道 dictvoice(国内直连、免 Key)。
+function getWordAudio(word: AudioWord, student: Student | null) {
+  const accent: AccentPreference = student?.preferred_accent ?? "us";
+  const localAudio = accent === "uk" ? word.audio_uk_url : word.audio_us_url;
+
+  return localAudio ?? dictVoiceUrl(word.spelling, accent);
 }
 
-function getWordPhonetic(word: LearningWord | ReviewWord, student: Student | null) {
-  if (!student) {
-    return null;
+function getWordPhonetic(word: AudioWord, student: Student | null) {
+  const accent: AccentPreference = student?.preferred_accent ?? "us";
+
+  return accent === "uk" ? word.phonetic_uk : word.phonetic_us;
+}
+
+function matchesStudentGrade(book: WordBook, student: Student) {
+  const keywords = gradeBookKeywords[student.grade_label];
+
+  if (!keywords) {
+    return true;
   }
 
-  return student.preferred_accent === "uk" ? word.phonetic_uk : word.phonetic_us;
+  return keywords.some((keyword) => book.name.includes(keyword));
+}
+
+// 按学员设置(学段 + 教材版本 + 年级)对词库做初步筛选;考纲词汇只按学段。
+function isRecommendedBook(book: WordBook, student: Student) {
+  if (book.stage !== student.school_stage) {
+    return false;
+  }
+
+  if (book.category === "exam_syllabus") {
+    return true;
+  }
+
+  if (student.preferred_publisher && book.publisher !== student.preferred_publisher) {
+    return false;
+  }
+
+  return matchesStudentGrade(book, student);
 }
 
 export default function Home() {
@@ -250,10 +332,10 @@ export default function Home() {
   const [vocabularyKeyword, setVocabularyKeyword] = useState("");
   const [studentForm, setStudentForm] = useState<StudentFormState | null>(null);
   const [learningWord, setLearningWord] = useState<LearningWord | null>(null);
+  const [testWord, setTestWord] = useState<TestWord | null>(null);
+  const [testMessage, setTestMessage] = useState("");
   const [reviewTestWord, setReviewTestWord] = useState<ReviewWord | null>(null);
   const [learningMessage, setLearningMessage] = useState("");
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [remotePhonetic, setRemotePhonetic] = useState<string | null>(null);
   const [isCardFlipped, setIsCardFlipped] = useState(false);
   const [isSubmittingRecord, setIsSubmittingRecord] = useState(false);
   const [appError, setAppError] = useState("");
@@ -262,6 +344,7 @@ export default function Home() {
   const activePlanBook = wordBooks.find((book) => book.plan_status === "in_progress");
   const todayTarget = activePlanBook?.daily_new_word_count ?? 0;
   const todayDone = dashboardData?.summary.today_new_words ?? 0;
+  const learningAudioUrl = learningWord ? getWordAudio(learningWord, activeStudent) : null;
 
   const loadDashboard = useCallback(async (studentId: string) => {
     const data = await readJson<DashboardData>(
@@ -323,35 +406,19 @@ export default function Home() {
     setLearningWord(data.word);
     setLearningMessage(data.word ? "" : "当前学习计划已经完成，或还没有选择词书。");
     setIsCardFlipped(false);
+  }, []);
 
-    if (!data.word) {
-      setAudioUrl(null);
-      setRemotePhonetic(null);
-      return;
-    }
-
-    const localAudio =
-      student.preferred_accent === "uk" ? data.word.audio_uk_url : data.word.audio_us_url;
-    const localPhonetic =
-      student.preferred_accent === "uk" ? data.word.phonetic_uk : data.word.phonetic_us;
-
-    setAudioUrl(localAudio);
-    setRemotePhonetic(localPhonetic);
-
-    await fetch(
-      `/api/words/${encodeURIComponent(data.word.spelling)}?accent=${student.preferred_accent}`,
-    )
-      .then((response) => readJson<{ phonetic: string | null; audioUrl: string | null }>(response))
-      .then((data) => {
-        const nextAudioUrl = data.audioUrl ?? localAudio;
-        setAudioUrl(nextAudioUrl);
-        setRemotePhonetic(data.phonetic ?? localPhonetic);
-      })
-      .catch(() => undefined);
+  // 测试进度独立于学习进度:从 /api/testing/next 按测试游标顺序取词。
+  const loadNextTestWord = useCallback(async (student: Student) => {
+    const data = await readJson<{ word: TestWord | null }>(
+      await fetch(`/api/testing/next?studentId=${student.id}`),
+    );
+    setTestWord(data.word);
+    setTestMessage(data.word ? "" : "当前词书的测试已全部完成，或还没有选择词书。");
   }, []);
 
   const submitLearningRecord = useCallback(
-    async (result: "known" | "unknown" | "correct" | "wrong") => {
+    async (result: "known" | "unknown") => {
       if (!activeStudent || !learningWord || isSubmittingRecord) {
         return;
       }
@@ -419,6 +486,41 @@ export default function Home() {
     [activeStudent, isSubmittingRecord, loadDashboard, loadReviews, loadVocabulary],
   );
 
+  // 新词拼写测试结果:走独立的 /api/testing/records,只推进测试游标,不影响学习进度。
+  const submitTestWordRecord = useCallback(
+    async (result: "correct" | "wrong") => {
+      if (!activeStudent || !testWord || isSubmittingRecord) {
+        return;
+      }
+
+      setIsSubmittingRecord(true);
+      setTestMessage("");
+
+      try {
+        await readJson(
+          await fetch("/api/testing/records", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              studentId: activeStudent.id,
+              wordId: testWord.word_id,
+              wordBookId: testWord.word_book_id,
+              entryOrderIndex: testWord.entry_order_index,
+              result,
+            }),
+          }),
+        );
+        await loadDashboard(activeStudent.id);
+        await loadNextTestWord(activeStudent);
+      } catch (error) {
+        setTestMessage(error instanceof Error ? error.message : "保存测试记录失败。");
+      } finally {
+        setIsSubmittingRecord(false);
+      }
+    },
+    [activeStudent, isSubmittingRecord, loadDashboard, loadNextTestWord, testWord],
+  );
+
   const submitTestRecord = useCallback(
     async (result: "correct" | "wrong") => {
       if (reviewTestWord) {
@@ -428,9 +530,9 @@ export default function Home() {
         return;
       }
 
-      await submitLearningRecord(result);
+      await submitTestWordRecord(result);
     },
-    [reviewTestWord, submitLearningRecord, submitReviewRecord],
+    [reviewTestWord, submitReviewRecord, submitTestWordRecord],
   );
 
   useEffect(() => {
@@ -440,12 +542,12 @@ export default function Home() {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "r" || event.key === "R") {
-        playAudioUrl(audioUrl);
+        playAudioUrl(learningAudioUrl);
       }
 
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        playAudioUrl(audioUrl);
+        playAudioUrl(learningAudioUrl);
       }
 
       if (event.key === " " || event.key === "ArrowDown") {
@@ -464,7 +566,7 @@ export default function Home() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeView, audioUrl, submitLearningRecord]);
+  }, [activeView, learningAudioUrl, submitLearningRecord]);
 
   const dashboardStats = useMemo(
     () => [
@@ -513,6 +615,7 @@ export default function Home() {
         schoolStage: studentForm.schoolStage,
         gradeLabel: studentForm.gradeLabel,
         preferredAccent: studentForm.preferredAccent,
+        preferredPublisher: studentForm.preferredPublisher,
       }),
     });
 
@@ -569,8 +672,12 @@ export default function Home() {
     setReviewTestWord(null);
     await Promise.all([loadWordBooks(student.id), loadDashboard(student.id)]);
 
-    if (activeView === "learning" || activeView === "test") {
+    if (activeView === "learning") {
       await loadNextWord(student);
+    }
+
+    if (activeView === "test") {
+      await loadNextTestWord(student);
     }
 
     if (activeView === "review") {
@@ -589,12 +696,20 @@ export default function Home() {
       setReviewTestWord(null);
     }
 
-    if ((view === "learning" || view === "test") && activeStudent) {
+    if (view === "learning" && activeStudent) {
       await loadNextWord(activeStudent);
+    }
+
+    if (view === "test" && activeStudent) {
+      await loadNextTestWord(activeStudent);
     }
 
     if (view === "dashboard" && activeStudent) {
       await loadDashboard(activeStudent.id);
+    }
+
+    if (view === "library" && activeStudent) {
+      await loadWordBooks(activeStudent.id);
     }
 
     if ((view === "review" || view === "stats") && activeStudent) {
@@ -611,12 +726,29 @@ export default function Home() {
     setActiveView("test");
   }
 
+  function handleLogout() {
+    setUser(null);
+    setStudents([]);
+    setWordBooks([]);
+    setActiveStudentId("");
+    setActiveView("dashboard");
+  }
+
   if (!user) {
     return (
       <main className="login-page">
+        <div className="login-hero" aria-hidden="true">
+          <span className="login-bubble b1" />
+          <span className="login-bubble b2" />
+          <span className="login-bubble b3" />
+        </div>
         <form className="login-panel" onSubmit={handleLogin}>
+          <span className="login-logo" aria-hidden="true">
+            <Sparkles size={26} />
+          </span>
           <p className="eyebrow">少儿英语·家庭版</p>
           <h1>家长登录</h1>
+          <p className="login-sub">一个家庭账号，管理全家孩子的英语学习。</p>
           <label>
             邮箱
             <input
@@ -651,19 +783,10 @@ export default function Home() {
           <h1>当前学员：{activeStudent?.name ?? "未选择"}</h1>
         </div>
         <div className="topbar-actions" aria-label="学习状态">
-          <span>
+          <span className="today-chip">
             今日进度：{todayDone}/{todayTarget}
           </span>
-          <button
-            aria-label="退出"
-            onClick={() => {
-              setUser(null);
-              setStudents([]);
-              setWordBooks([]);
-              setActiveStudentId("");
-            }}
-            type="button"
-          >
+          <button aria-label="退出" onClick={handleLogout} type="button">
             <LogOut aria-hidden="true" size={18} />
             退出
           </button>
@@ -686,53 +809,25 @@ export default function Home() {
             </div>
             <div className="student-list">
               {students.map((student) => (
-                <div className="student-card-row" key={student.id}>
-                  <button
-                    className={
-                      student.id === activeStudentId ? "student-card active" : "student-card"
-                    }
-                    onClick={() => void switchStudent(student)}
-                    type="button"
-                  >
-                    <span className="avatar" aria-hidden="true">
-                      {initials(student.name)}
-                    </span>
-                    <span>
-                      <strong>{student.name}</strong>
-                      <small>
-                        {stageLabels[student.school_stage]}
-                        {student.grade_label} ·{" "}
-                        {student.preferred_accent === "us" ? "美音" : "英音"}
-                      </small>
-                    </span>
-                  </button>
-                  <div className="student-actions">
-                    <button
-                      aria-label={`编辑 ${student.name}`}
-                      className="icon-action"
-                      onClick={() =>
-                        setStudentForm({
-                          id: student.id,
-                          name: student.name,
-                          schoolStage: student.school_stage,
-                          gradeLabel: student.grade_label,
-                          preferredAccent: student.preferred_accent,
-                        })
-                      }
-                      type="button"
-                    >
-                      <Pencil aria-hidden="true" size={16} />
-                    </button>
-                    <button
-                      aria-label={`删除 ${student.name}`}
-                      className="icon-action danger"
-                      onClick={() => void deleteStudent(student.id)}
-                      type="button"
-                    >
-                      <Trash2 aria-hidden="true" size={16} />
-                    </button>
-                  </div>
-                </div>
+                <button
+                  className={
+                    student.id === activeStudentId ? "student-card active" : "student-card"
+                  }
+                  key={student.id}
+                  onClick={() => void switchStudent(student)}
+                  type="button"
+                >
+                  <span className="avatar" aria-hidden="true">
+                    {initials(student.name)}
+                  </span>
+                  <span>
+                    <strong>{student.name}</strong>
+                    <small>
+                      {stageLabels[student.school_stage]}
+                      {student.grade_label} · {student.preferred_accent === "us" ? "美音" : "英音"}
+                    </small>
+                  </span>
+                </button>
               ))}
             </div>
           </section>
@@ -740,20 +835,14 @@ export default function Home() {
           <nav className="nav-list" aria-label="功能导航">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const enabled = true;
               const active = item.key === activeView;
 
               return (
                 <button
                   aria-current={active ? "page" : undefined}
-                  aria-disabled={!enabled}
-                  className={`nav-link ${active ? "active" : ""} ${enabled ? "" : "disabled"}`}
+                  className={`nav-link ${active ? "active" : ""}`}
                   key={item.key}
-                  onClick={() => {
-                    if (enabled) {
-                      void openView(item.key as ViewKey);
-                    }
-                  }}
+                  onClick={() => void openView(item.key)}
                   type="button"
                 >
                   <Icon aria-hidden="true" size={20} />
@@ -764,7 +853,7 @@ export default function Home() {
           </nav>
         </aside>
 
-        <main className="content">
+        <main className="content" key={activeView}>
           {appError ? (
             <div className="inline-alert">
               <span>{appError}</span>
@@ -784,53 +873,34 @@ export default function Home() {
             />
           ) : null}
           {activeView === "library" ? (
-            <Library onStartBook={(book) => void startBook(book)} wordBooks={wordBooks} />
+            <Library
+              activeStudent={activeStudent}
+              onStartBook={(book) => void startBook(book)}
+              wordBooks={wordBooks}
+            />
           ) : null}
           {activeView === "learning" ? (
             <LearningRoom
               activeStudent={activeStudent}
-              audioUrl={audioUrl}
+              audioUrl={learningAudioUrl}
               isCardFlipped={isCardFlipped}
               isSubmitting={isSubmittingRecord}
               learningMessage={learningMessage}
               onFlip={() => setIsCardFlipped((current) => !current)}
-              onReplay={() => playAudioUrl(audioUrl)}
+              onReplay={() => playAudioUrl(learningAudioUrl)}
               onSubmit={(result) => void submitLearningRecord(result)}
-              phonetic={remotePhonetic}
+              phonetic={learningWord ? getWordPhonetic(learningWord, activeStudent) : null}
               word={learningWord}
             />
           ) : null}
           {activeView === "test" ? (
             <TestRoom
               activeStudent={activeStudent}
-              audioUrl={
-                reviewTestWord
-                  ? getWordAudio(reviewTestWord, activeStudent)
-                  : learningWord
-                    ? audioUrl
-                    : null
-              }
               isSubmitting={isSubmittingRecord}
-              message={learningMessage}
+              message={testMessage}
               onComplete={(result) => void submitTestRecord(result)}
-              onReplay={() =>
-                playAudioUrl(
-                  reviewTestWord
-                    ? getWordAudio(reviewTestWord, activeStudent)
-                    : learningWord
-                      ? audioUrl
-                      : null,
-                )
-              }
-              phonetic={
-                reviewTestWord
-                  ? getWordPhonetic(reviewTestWord, activeStudent)
-                  : learningWord
-                    ? remotePhonetic
-                    : null
-              }
               reviewWord={reviewTestWord}
-              word={learningWord}
+              word={testWord}
             />
           ) : null}
           {activeView === "review" ? (
@@ -854,6 +924,28 @@ export default function Home() {
           {activeView === "stats" ? (
             <StatsPanel dashboardData={dashboardData} wordBooks={wordBooks} />
           ) : null}
+          {activeView === "settings" ? (
+            <SettingsPanel
+              activeStudentId={activeStudentId}
+              onAddStudent={() => setStudentForm(defaultStudentForm)}
+              onDeleteStudent={(studentId) => void deleteStudent(studentId)}
+              onEditStudent={(student) =>
+                setStudentForm({
+                  id: student.id,
+                  name: student.name,
+                  schoolStage: student.school_stage,
+                  gradeLabel: student.grade_label,
+                  preferredAccent: student.preferred_accent,
+                  preferredPublisher: student.preferred_publisher,
+                })
+              }
+              onLogout={handleLogout}
+              onSwitchStudent={(student) => void switchStudent(student)}
+              students={students}
+              user={user}
+              wordBooks={wordBooks}
+            />
+          ) : null}
         </main>
       </div>
 
@@ -863,10 +955,23 @@ export default function Home() {
           onChange={setStudentForm}
           onClose={() => setStudentForm(null)}
           onSubmit={(event) => void saveStudent(event)}
+          publishers={publisherOptions(wordBooks)}
         />
       ) : null}
     </div>
   );
+}
+
+function publisherOptions(wordBooks: WordBook[]) {
+  const publishers = new Set<string>();
+
+  wordBooks.forEach((book) => {
+    if (book.category === "textbook" && book.publisher) {
+      publishers.add(book.publisher);
+    }
+  });
+
+  return Array.from(publishers).sort((left, right) => left.localeCompare(right, "zh"));
 }
 
 function Dashboard({
@@ -921,7 +1026,7 @@ function Dashboard({
             </strong>
           </div>
           <div className="progress-bar" aria-label="今日进度">
-            <span style={{ width: `${progressPercent}%` }} />
+            <span style={{ width: `${Math.min(progressPercent, 100)}%` }} />
           </div>
           <button className="start-button" onClick={onOpenLearning} type="button">
             <Play aria-hidden="true" size={22} />
@@ -968,36 +1073,133 @@ function Dashboard({
 }
 
 function Library({
+  activeStudent,
   onStartBook,
   wordBooks,
 }: {
+  activeStudent: Student | null;
   onStartBook: (book: WordBook) => void;
   wordBooks: WordBook[];
 }) {
+  const [mode, setMode] = useState<"recommended" | "all">("recommended");
+  const [keyword, setKeyword] = useState("");
+  const [stageFilter, setStageFilter] = useState<SchoolStage | "all">("all");
+  const [publisherFilter, setPublisherFilter] = useState("");
+  const publishers = publisherOptions(wordBooks);
+
+  const visibleBooks = wordBooks.filter((book) => {
+    if (keyword && !book.name.toLowerCase().includes(keyword.trim().toLowerCase())) {
+      return false;
+    }
+
+    if (mode === "recommended" && activeStudent) {
+      return isRecommendedBook(book, activeStudent);
+    }
+
+    if (stageFilter !== "all" && book.stage !== stageFilter) {
+      return false;
+    }
+
+    if (publisherFilter && book.publisher !== publisherFilter) {
+      return false;
+    }
+
+    return true;
+  });
+
+  const recommendSummary = activeStudent
+    ? `${stageLabels[activeStudent.school_stage]}${activeStudent.grade_label}${
+        activeStudent.preferred_publisher ? ` · ${activeStudent.preferred_publisher}` : ""
+      }`
+    : "";
+
   return (
     <>
       <section className="page-heading" aria-labelledby="library-title">
         <div>
           <p className="eyebrow">Library</p>
           <h2 id="library-title">选词库</h2>
-          <p>选择一本词书，直接开始学习。</p>
+          <p>
+            {mode === "recommended" && activeStudent
+              ? `已按学员设置（${recommendSummary}）自动筛选，可切换查看全部词书。`
+              : "浏览全部词书，支持按学段和教材版本筛选。"}
+          </p>
         </div>
-        <div className="search-box">
+        <label className="search-box interactive">
           <Search aria-hidden="true" size={20} />
-          <span>搜索词书</span>
+          <input
+            aria-label="搜索词书"
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="搜索词书"
+            value={keyword}
+          />
+        </label>
+      </section>
+
+      <section className="library-toolbar" aria-label="词库筛选">
+        <div className="chip-group" role="tablist" aria-label="推荐或全部">
+          <button
+            className={`chip ${mode === "recommended" ? "active" : ""}`}
+            onClick={() => setMode("recommended")}
+            type="button"
+          >
+            <Sparkles aria-hidden="true" size={16} />
+            推荐词书
+          </button>
+          <button
+            className={`chip ${mode === "all" ? "active" : ""}`}
+            onClick={() => setMode("all")}
+            type="button"
+          >
+            全部词书
+          </button>
         </div>
+        {mode === "all" ? (
+          <div className="library-filters">
+            <div className="chip-group" aria-label="按学段筛选">
+              {(["all", "primary", "junior", "senior"] as const).map((stage) => (
+                <button
+                  className={`chip ${stageFilter === stage ? "active" : ""}`}
+                  key={stage}
+                  onClick={() => setStageFilter(stage)}
+                  type="button"
+                >
+                  {stage === "all" ? "全部学段" : stageLabels[stage]}
+                </button>
+              ))}
+            </div>
+            <select
+              aria-label="按教材版本筛选"
+              className="publisher-select"
+              onChange={(event) => setPublisherFilter(event.target.value)}
+              value={publisherFilter}
+            >
+              <option value="">全部版本</option>
+              {publishers.map((publisher) => (
+                <option key={publisher} value={publisher}>
+                  {publisher}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        <span className="library-count">{visibleBooks.length} 本词书</span>
       </section>
 
       <section className="book-grid" aria-label="词库列表">
-        {wordBooks.map((book) => {
+        {visibleBooks.map((book) => {
           const progressPercent = Math.round(
             (book.learned_count / Math.max(book.total_words, 1)) * 100,
           );
 
           return (
             <article className="book-card" key={book.id}>
-              <div className="book-cover">
+              <div className="book-cover" data-stage={book.stage}>
                 <span>{book.publisher ?? "词书"}</span>
+                {book.plan_status === "in_progress" ? <em className="book-badge">学习中</em> : null}
+                {book.plan_status === "paused" ? (
+                  <em className="book-badge paused">已暂停</em>
+                ) : null}
               </div>
               <div className="book-body">
                 <p>
@@ -1022,6 +1224,11 @@ function Library({
             </article>
           );
         })}
+        {visibleBooks.length === 0 ? (
+          <div className="empty-state">
+            <p>没有符合条件的词书，试试切换“全部词书”或调整筛选条件。</p>
+          </div>
+        ) : null}
       </section>
     </>
   );
@@ -1046,7 +1253,7 @@ function LearningRoom({
   learningMessage: string;
   onFlip: () => void;
   onReplay: () => void;
-  onSubmit: (result: "known" | "unknown" | "correct" | "wrong") => void;
+  onSubmit: (result: "known" | "unknown") => void;
   phonetic: string | null;
   word: LearningWord | null;
 }) {
@@ -1056,6 +1263,10 @@ function LearningRoom({
     }
   }, [audioUrl, word]);
 
+  const progressPercent = word
+    ? Math.round((word.entry_order_index / Math.max(word.total_words, 1)) * 100)
+    : 0;
+
   return (
     <>
       <section className="page-heading" aria-labelledby="learning-title">
@@ -1064,7 +1275,7 @@ function LearningRoom({
           <h2 id="learning-title">学习室</h2>
           <p>
             {word
-              ? `${word.word_book_name} · ${activeStudent?.preferred_accent === "uk" ? "英音" : "美音"}`
+              ? `${word.word_book_name} · ${activeStudent?.preferred_accent === "uk" ? "英音" : "美音"} · 按课程顺序学习`
               : "暂无可学习单词。"}
           </p>
         </div>
@@ -1081,11 +1292,19 @@ function LearningRoom({
               <span>
                 学到 {word.entry_order_index}/{word.total_words}
               </span>
-              <span>↑ 重听 · ↓ 翻卡 · ← 不认识 · → 认识</span>
+              <div className="progress-bar slim" aria-hidden="true">
+                <span style={{ width: `${progressPercent}%` }} />
+              </div>
+              <span className="key-hints">↑ 重听 · ↓ 翻卡 · ← 不认识 · → 认识</span>
             </div>
-            <button className="word-card" onClick={onFlip} type="button">
+            <button
+              className={`word-card ${isCardFlipped ? "flipped" : ""}`}
+              key={word.word_id}
+              onClick={onFlip}
+              type="button"
+            >
               <span className="word-spelling">{word.spelling}</span>
-              <span className="word-phonetic">{phonetic ?? "音标加载中"}</span>
+              <span className="word-phonetic">{phonetic ?? ""}</span>
               {isCardFlipped ? (
                 <span className="word-detail">
                   {word.definitions.map((definition) => (
@@ -1097,7 +1316,9 @@ function LearningRoom({
                   {word.example_sentence ? <em>{word.example_sentence}</em> : null}
                   {word.example_translation ? <small>{word.example_translation}</small> : null}
                 </span>
-              ) : null}
+              ) : (
+                <span className="flip-hint">按空格或点击翻转查看释义</span>
+              )}
             </button>
             <div className="learning-actions">
               <button
@@ -1141,27 +1362,26 @@ function LearningRoom({
 
 function TestRoom({
   activeStudent,
-  audioUrl,
   isSubmitting,
   message,
   onComplete,
-  onReplay,
-  phonetic,
   reviewWord,
   word,
 }: {
   activeStudent: Student | null;
-  audioUrl: string | null;
   isSubmitting: boolean;
   message: string;
   onComplete: (result: "correct" | "wrong") => void;
-  onReplay: () => void;
-  phonetic: string | null;
   reviewWord: ReviewWord | null;
-  word: LearningWord | null;
+  word: TestWord | null;
 }) {
   const testWord = reviewWord ?? word;
   const spelling = testWord?.spelling ?? "";
+  const audioUrl = testWord ? getWordAudio(testWord, activeStudent) : null;
+  const phonetic = testWord ? getWordPhonetic(testWord, activeStudent) : null;
+  const stageSize = word?.stage_size ?? 10;
+  const stageNumber = word ? Math.ceil(word.entry_order_index / stageSize) : 0;
+  const stagePosition = word ? ((word.entry_order_index - 1) % stageSize) + 1 : 0;
 
   return (
     <>
@@ -1171,11 +1391,16 @@ function TestRoom({
           <h2 id="test-title">测试</h2>
           <p>
             {testWord
-              ? `${reviewWord ? "复习测试" : "新词测试"} · ${activeStudent?.preferred_accent === "uk" ? "英音" : "美音"}`
+              ? `${reviewWord ? "复习测试" : "词书测试"} · ${activeStudent?.preferred_accent === "uk" ? "英音" : "美音"}`
               : "暂无可测试单词。"}
           </p>
         </div>
-        <button className="primary-action" disabled={!audioUrl} onClick={onReplay} type="button">
+        <button
+          className="primary-action"
+          disabled={!audioUrl}
+          onClick={() => playAudioUrl(audioUrl)}
+          type="button"
+        >
           <Volume2 aria-hidden="true" size={22} />
           重听
         </button>
@@ -1186,17 +1411,29 @@ function TestRoom({
           <>
             <div className="test-summary">
               <div>
-                <span className="word-phonetic">{phonetic ?? "音标加载中"}</span>
+                <span className="word-phonetic">{phonetic ?? ""}</span>
                 <p>听发音，按键盘输入缺失字母。</p>
               </div>
-              <span>{reviewWord ? "到期复习" : word?.word_book_name}</span>
+              {reviewWord ? (
+                <span>到期复习</span>
+              ) : word ? (
+                <span className="test-progress-meta">
+                  <strong>{word.word_book_name}</strong>第 {stageNumber} 阶段 · 本阶段{" "}
+                  {stagePosition}/
+                  {Math.min(
+                    stageSize,
+                    Math.max(word.total_words - (stageNumber - 1) * stageSize, 1),
+                  )}{" "}
+                  · 全书 {word.entry_order_index}/{word.total_words}
+                </span>
+              ) : null}
             </div>
             <SpellingDrill
               audioUrl={audioUrl}
               disabled={isSubmitting}
-              key={`${reviewWord ? "review" : "new"}-${testWord.word_id}`}
+              key={`${reviewWord ? "review" : "book"}-${testWord.word_id}`}
               onComplete={onComplete}
-              onReplay={onReplay}
+              onReplay={() => playAudioUrl(audioUrl)}
               word={spelling}
             />
           </>
@@ -1471,6 +1708,7 @@ function StatsPanel({
   wordBooks: WordBook[];
 }) {
   const summary = dashboardData?.summary;
+  const startedBooks = wordBooks.filter((book) => book.active_plan_id);
 
   return (
     <>
@@ -1495,12 +1733,13 @@ function StatsPanel({
           <span>生词</span>
           <strong>{summary?.vocab_book_count ?? 0}</strong>
         </article>
-        {wordBooks.map((book) => (
+        {startedBooks.map((book) => (
           <article className="vocab-item" key={book.id}>
             <div>
               <h3>{book.name}</h3>
               <p>
-                {book.learned_count}/{book.total_words}
+                {book.learned_count}/{book.total_words} ·{" "}
+                {book.plan_status === "in_progress" ? "学习中" : "已暂停，进度保留"}
               </p>
             </div>
             <div className="progress-bar" aria-label={`${book.name} 统计进度`}>
@@ -1512,6 +1751,129 @@ function StatsPanel({
             </div>
           </article>
         ))}
+        {startedBooks.length === 0 ? (
+          <div className="empty-state">
+            <p>还没有开始学习任何词书。</p>
+          </div>
+        ) : null}
+      </section>
+    </>
+  );
+}
+
+function SettingsPanel({
+  activeStudentId,
+  onAddStudent,
+  onDeleteStudent,
+  onEditStudent,
+  onLogout,
+  onSwitchStudent,
+  students,
+  user,
+  wordBooks,
+}: {
+  activeStudentId: string;
+  onAddStudent: () => void;
+  onDeleteStudent: (studentId: string) => void;
+  onEditStudent: (student: Student) => void;
+  onLogout: () => void;
+  onSwitchStudent: (student: Student) => void;
+  students: Student[];
+  user: User;
+  wordBooks: WordBook[];
+}) {
+  const textbookCount = wordBooks.filter((book) => book.category === "textbook").length;
+
+  return (
+    <>
+      <section className="page-heading" aria-labelledby="settings-title">
+        <div>
+          <p className="eyebrow">Settings</p>
+          <h2 id="settings-title">用户设置</h2>
+          <p>一个家庭账号管理多名学员：设置学段、年级和教材版本后，选词库会自动筛选。</p>
+        </div>
+        <button className="primary-action" onClick={onAddStudent} type="button">
+          <Plus aria-hidden="true" size={22} />
+          新增学员
+        </button>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-students-title">
+        <h3 id="settings-students-title">学员档案</h3>
+        <div className="settings-student-list">
+          {students.map((student) => (
+            <article
+              className={`settings-student-card ${student.id === activeStudentId ? "active" : ""}`}
+              key={student.id}
+            >
+              <button
+                className="settings-student-main"
+                onClick={() => onSwitchStudent(student)}
+                type="button"
+              >
+                <span className="avatar" aria-hidden="true">
+                  {initials(student.name)}
+                </span>
+                <span className="settings-student-info">
+                  <strong>{student.name}</strong>
+                  <small>
+                    {stageLabels[student.school_stage]}
+                    {student.grade_label} · {student.preferred_accent === "us" ? "美音" : "英音"} ·{" "}
+                    {student.preferred_publisher || "教材版本不限"}
+                  </small>
+                </span>
+                {student.id === activeStudentId ? <em className="current-chip">当前学员</em> : null}
+              </button>
+              <div className="student-actions">
+                <button
+                  aria-label={`编辑 ${student.name}`}
+                  className="icon-action"
+                  onClick={() => onEditStudent(student)}
+                  type="button"
+                >
+                  <Pencil aria-hidden="true" size={16} />
+                </button>
+                <button
+                  aria-label={`删除 ${student.name}`}
+                  className="icon-action danger"
+                  onClick={() => onDeleteStudent(student.id)}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={16} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+        <p className="settings-hint">
+          学习进度、测试进度、生词本都按学员独立保存；同一学员在不同词书（不同版本/学期）之间切换时，各词书进度互不影响。
+        </p>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-account-title">
+        <h3 id="settings-account-title">账号</h3>
+        <div className="settings-account">
+          <div className="settings-account-row">
+            <UserRound aria-hidden="true" size={20} />
+            <div>
+              <strong>{user.nickname ?? "家长"}</strong>
+              <small>{user.email}</small>
+            </div>
+          </div>
+          <div className="settings-account-row">
+            <LibraryBig aria-hidden="true" size={20} />
+            <div>
+              <strong>词库</strong>
+              <small>
+                共 {wordBooks.length} 本词书，其中教材同步 {textbookCount} 本
+              </small>
+            </div>
+          </div>
+          <button className="book-button secondary" onClick={onLogout} type="button">
+            <LogOut aria-hidden="true" size={18} />
+            退出登录
+          </button>
+        </div>
       </section>
     </>
   );
@@ -1522,12 +1884,16 @@ function StudentDialog({
   onChange,
   onClose,
   onSubmit,
+  publishers,
 }: {
   form: StudentFormState;
   onChange: (form: StudentFormState) => void;
   onClose: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  publishers: string[];
 }) {
+  const grades = gradeOptions[form.schoolStage];
+
   return (
     <div className="modal-backdrop" role="presentation">
       <form
@@ -1551,9 +1917,14 @@ function StudentDialog({
         <label>
           学段
           <select
-            onChange={(event) =>
-              onChange({ ...form, schoolStage: event.target.value as SchoolStage })
-            }
+            onChange={(event) => {
+              const nextStage = event.target.value as SchoolStage;
+              onChange({
+                ...form,
+                schoolStage: nextStage,
+                gradeLabel: gradeOptions[nextStage][0],
+              });
+            }}
             value={form.schoolStage}
           >
             <option value="primary">小学</option>
@@ -1563,11 +1934,30 @@ function StudentDialog({
         </label>
         <label>
           年级
-          <input
+          <select
             onChange={(event) => onChange({ ...form, gradeLabel: event.target.value })}
-            required
-            value={form.gradeLabel}
-          />
+            value={grades.includes(form.gradeLabel) ? form.gradeLabel : grades[0]}
+          >
+            {grades.map((grade) => (
+              <option key={grade} value={grade}>
+                {grade}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          教材版本
+          <select
+            onChange={(event) => onChange({ ...form, preferredPublisher: event.target.value })}
+            value={form.preferredPublisher}
+          >
+            <option value="">不限（显示全部版本）</option>
+            {publishers.map((publisher) => (
+              <option key={publisher} value={publisher}>
+                {publisher}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           发音偏好

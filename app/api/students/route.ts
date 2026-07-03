@@ -10,6 +10,7 @@ type StudentRow = {
   school_stage: "primary" | "junior" | "senior";
   grade_label: string;
   preferred_accent: "us" | "uk";
+  preferred_publisher: string;
   sort_order: number;
 };
 
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
 
   const result = await query<StudentRow>(
     `
-      SELECT id, user_id, name, school_stage, grade_label, preferred_accent, sort_order
+      SELECT id, user_id, name, school_stage, grade_label, preferred_accent, preferred_publisher, sort_order
       FROM students
       WHERE user_id = $1
         AND deleted_at IS NULL
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
     schoolStage?: unknown;
     gradeLabel?: string;
     preferredAccent?: unknown;
+    preferredPublisher?: string;
   };
 
   const userId = body.userId;
@@ -57,6 +59,7 @@ export async function POST(request: Request) {
   const gradeLabel = body.gradeLabel?.trim();
   const schoolStage = body.schoolStage;
   const preferredAccent = body.preferredAccent ?? "us";
+  const preferredPublisher = body.preferredPublisher?.trim() ?? "";
 
   if (!userId || !name || !gradeLabel || !isStage(schoolStage) || !isAccent(preferredAccent)) {
     return NextResponse.json({ error: "学员信息不完整。" }, { status: 400 });
@@ -64,18 +67,19 @@ export async function POST(request: Request) {
 
   const result = await query<StudentRow>(
     `
-      INSERT INTO students (user_id, name, school_stage, grade_label, preferred_accent, sort_order)
+      INSERT INTO students (user_id, name, school_stage, grade_label, preferred_accent, preferred_publisher, sort_order)
       VALUES (
         $1,
         $2,
         $3,
         $4,
         $5,
+        $6,
         COALESCE((SELECT max(sort_order) + 1 FROM students WHERE user_id = $1), 0)
       )
-      RETURNING id, user_id, name, school_stage, grade_label, preferred_accent, sort_order
+      RETURNING id, user_id, name, school_stage, grade_label, preferred_accent, preferred_publisher, sort_order
     `,
-    [userId, name, schoolStage, gradeLabel, preferredAccent],
+    [userId, name, schoolStage, gradeLabel, preferredAccent, preferredPublisher],
   );
 
   await query("INSERT INTO student_stats (student_id) VALUES ($1) ON CONFLICT DO NOTHING", [

@@ -21,6 +21,9 @@ test.beforeEach(async () => {
     "DELETE FROM daily_study_logs WHERE student_id = '10000000-0000-0000-0000-000000000001'",
   );
   await pool.query(
+    "DELETE FROM test_progress WHERE student_id = '10000000-0000-0000-0000-000000000001'",
+  );
+  await pool.query(
     `
       UPDATE student_stats
       SET total_words_mastered = 0,
@@ -39,6 +42,15 @@ test.beforeEach(async () => {
           status = 'in_progress',
           updated_at = now()
       WHERE id = '50000000-0000-0000-0000-000000000001'
+    `,
+  );
+  await pool.query(
+    `
+      UPDATE study_plans
+      SET status = 'paused', updated_at = now()
+      WHERE student_id = '10000000-0000-0000-0000-000000000001'
+        AND id != '50000000-0000-0000-0000-000000000001'
+        AND status = 'in_progress'
     `,
   );
 });
@@ -77,7 +89,7 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
   await expect(page.getByRole("heading", { name: "新增学员" })).toBeVisible();
   await page.getByLabel("姓名").fill(studentName);
   await page.getByLabel("学段").selectOption("senior");
-  await page.getByLabel("年级").fill("高一");
+  await page.getByLabel("年级").selectOption("高一");
   await page.getByLabel("发音偏好").selectOption("uk");
   await page.screenshot({
     path: "test-results/phase2-ui/03-student-form-filled.png",
@@ -92,11 +104,20 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
 
   await page.getByRole("button", { name: "选词库" }).click();
   await expect(page.getByRole("heading", { name: "选词库" })).toBeVisible();
+  // 默认按学员设置(小学五年级)推荐词书,可切换查看全部
+  await expect(page.getByRole("button", { name: "推荐词书" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "人教版五年级上册", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "仁爱版初中英语七年级上册" })).toHaveCount(0);
+  await page.getByRole("button", { name: "全部词书" }).click();
+  await page.getByLabel("搜索词书").fill("仁爱版初中英语七年级上册");
+  await expect(page.getByRole("heading", { name: "仁爱版初中英语七年级上册" })).toBeVisible();
+  await page.getByLabel("搜索词书").fill("");
+  await page.getByRole("button", { name: "推荐词书" }).click();
   await page.screenshot({ path: "test-results/phase2-ui/05-library.png", fullPage: true });
 
   await page
     .locator(".book-card")
-    .filter({ has: page.getByRole("heading", { name: "人教版五年级上册" }) })
+    .filter({ has: page.getByRole("heading", { name: "人教版五年级上册", exact: true }) })
     .getByRole("button")
     .click();
   await page.screenshot({ path: "test-results/phase2-ui/06-plan-started.png", fullPage: true });
@@ -115,15 +136,25 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
   const currentWord = await page.locator(".word-spelling").innerText();
   await page.getByRole("button", { name: "不认识" }).click();
   await expect(page.locator(".word-spelling")).not.toHaveText(currentWord);
-  const testWord = await page.locator(".word-spelling").innerText();
+  const secondLearningWord = await page.locator(".word-spelling").innerText();
   await page.screenshot({ path: "test-results/phase2-ui/09-after-record.png", fullPage: true });
 
+  // 词书测试:独立的测试游标从词书第 1 个词开始(即 currentWord),
+  // 且完成测试不会影响学习进度。
   await page.getByRole("button", { name: "开始测试" }).click();
   await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
   await expect(page.getByLabel("拼写三轮巩固")).toBeVisible();
-  await completeSpellingDrill(page, testWord);
+  await expect(page.getByText("第 1 阶段")).toBeVisible();
+  await completeSpellingDrill(page, currentWord);
   await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
   await page.screenshot({ path: "test-results/phase2-ui/10-test-complete.png", fullPage: true });
+
+  // 回到学习室:学习进度不受测试影响,仍停在第二个学习词
+  await page
+    .getByRole("navigation", { name: "功能导航" })
+    .getByRole("button", { name: "开始学习" })
+    .click();
+  await expect(page.locator(".word-spelling")).toHaveText(secondLearningWord);
 
   await pool.query(
     `
@@ -161,6 +192,51 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
   await expect(page.getByText("待复习")).toBeVisible();
   await page.screenshot({ path: "test-results/phase2-ui/13-stats.png", fullPage: true });
 
+  // 学员管理已移入设置页
+  await page.getByRole("button", { name: "设置" }).click();
+  await expect(page.getByRole("heading", { name: "用户设置" })).toBeVisible();
+  await expect(page.getByText("学员档案")).toBeVisible();
+  await page.screenshot({ path: "test-results/phase2-ui/14-settings.png", fullPage: true });
   await page.getByRole("button", { name: `删除 ${studentName}` }).click();
   await expect(page.getByText(studentName)).toHaveCount(0);
+});
+
+test("study progress is kept per book when switching between books", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("邮箱").fill("demo@example.com");
+  await page.getByLabel("密码").fill("demo123456");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page.getByRole("heading", { name: "仪表盘" })).toBeVisible();
+
+  // 在默认词书学习 1 个词
+  await page
+    .getByRole("navigation", { name: "功能导航" })
+    .getByRole("button", { name: "开始学习" })
+    .click();
+  await expect(page.locator(".word-card")).toBeVisible();
+  await page.getByRole("button", { name: "认识", exact: true }).click();
+  await expect(page.getByText("学到 2/6")).toBeVisible();
+
+  // 切到另一本词书(自动暂停原计划,进度保留)
+  await page.getByRole("button", { name: "选词库" }).click();
+  await page.getByRole("button", { name: "全部词书" }).click();
+  await page.getByLabel("搜索词书").fill("小学核心词");
+  await page
+    .locator(".book-card")
+    .filter({ has: page.getByRole("heading", { name: "小学核心词", exact: true }) })
+    .getByRole("button")
+    .click();
+  await expect(page.getByRole("heading", { name: "学习室" })).toBeVisible();
+  await expect(page.getByText("学到 1/3")).toBeVisible();
+
+  // 切回原词书:进度必须还在(学到 2/6)
+  await page.getByRole("button", { name: "选词库" }).click();
+  await page.getByRole("button", { name: "推荐词书" }).click();
+  await page
+    .locator(".book-card")
+    .filter({ has: page.getByRole("heading", { name: "人教版五年级上册", exact: true }) })
+    .getByRole("button", { name: "继续学习" })
+    .click();
+  await expect(page.getByRole("heading", { name: "学习室" })).toBeVisible();
+  await expect(page.getByText("学到 2/6")).toBeVisible();
 });

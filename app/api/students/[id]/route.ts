@@ -10,6 +10,7 @@ type StudentRow = {
   school_stage: "primary" | "junior" | "senior";
   grade_label: string;
   preferred_accent: "us" | "uk";
+  preferred_publisher: string;
   sort_order: number;
 };
 
@@ -28,12 +29,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     schoolStage?: unknown;
     gradeLabel?: string;
     preferredAccent?: unknown;
+    preferredPublisher?: string;
   };
 
   const name = body.name?.trim();
   const gradeLabel = body.gradeLabel?.trim();
   const schoolStage = body.schoolStage;
   const preferredAccent = body.preferredAccent;
+  const preferredPublisher = body.preferredPublisher?.trim() ?? "";
 
   if (!name || !gradeLabel || !isStage(schoolStage) || !isAccent(preferredAccent)) {
     return NextResponse.json({ error: "学员信息不完整。" }, { status: 400 });
@@ -46,12 +49,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
           school_stage = $3,
           grade_label = $4,
           preferred_accent = $5,
+          preferred_publisher = $6,
           updated_at = now()
       WHERE id = $1
         AND deleted_at IS NULL
-      RETURNING id, user_id, name, school_stage, grade_label, preferred_accent, sort_order
+      RETURNING id, user_id, name, school_stage, grade_label, preferred_accent, preferred_publisher, sort_order
     `,
-    [id, name, schoolStage, gradeLabel, preferredAccent],
+    [id, name, schoolStage, gradeLabel, preferredAccent, preferredPublisher],
   );
 
   if (!result.rows[0]) {
