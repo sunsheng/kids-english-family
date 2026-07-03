@@ -1256,10 +1256,6 @@ function LearningRoom({
               : "暂无可学习单词。"}
           </p>
         </div>
-        <button className="primary-action" onClick={onReplay} type="button">
-          <Volume2 aria-hidden="true" size={22} />
-          重听
-        </button>
       </section>
 
       <section className="learning-panel" aria-label="单词卡片">
@@ -1372,15 +1368,6 @@ function TestRoom({
               : "暂无可测试单词。"}
           </p>
         </div>
-        <button
-          className="primary-action"
-          disabled={!audioUrl}
-          onClick={() => playAudioUrl(audioUrl)}
-          type="button"
-        >
-          <Volume2 aria-hidden="true" size={22} />
-          重听
-        </button>
       </section>
 
       <section className="learning-panel" aria-label="拼写测试">
