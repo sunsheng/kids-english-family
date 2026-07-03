@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dictVoiceUrl, type Accent } from "@/lib/audio";
+import { audioPlayer } from "@/lib/audio-player";
 import { createDrillRounds, maskedWord, type DrillRound } from "@/lib/spelling-drill";
 
 type ViewKey =
@@ -213,49 +214,67 @@ function initials(name: string) {
   return name.slice(-1);
 }
 
-function playAudioUrl(audioUrl: string | null) {
-  if (!audioUrl) {
-    return;
-  }
+const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
-  const audio = new Audio(audioUrl);
-  void audio.play().catch(() => undefined);
+type CalendarDay = {
+  key: string;
+  dayNumber: number;
+  dateLabel: string;
+  level: number;
+  newCount: number;
+  reviewCount: number;
+  isToday: boolean;
+  isFuture: boolean;
+};
+
+function localDateKey(date: Date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
-const autoPlayHistory = new Map<string, number>();
-
-function playAutoAudioUrl(audioUrl: string | null, key: string) {
-  if (!audioUrl) {
-    return;
-  }
-
-  const now = Date.now();
-  const lastPlayedAt = autoPlayHistory.get(key) ?? 0;
-
-  if (now - lastPlayedAt < 1200) {
-    return;
-  }
-
-  autoPlayHistory.set(key, now);
-  playAudioUrl(audioUrl);
+function activityLevel(total: number) {
+  if (total <= 0) return 0;
+  if (total <= 5) return 1;
+  if (total <= 10) return 2;
+  if (total <= 19) return 3;
+  return 4;
 }
 
-function createHeatmapLevels(days: DashboardData["heatmap"]) {
-  const levels = Array(14).fill(0) as number[];
-  const today = new Date();
+// 近两周迷你日历:按 周一~周日 对齐成两行(上周 + 本周),格子显示几号,悬停看当天明细。
+function createCalendarDays(heatmap: DashboardData["heatmap"]): CalendarDay[] {
+  const counts = new Map<string, { newCount: number; reviewCount: number }>();
 
-  days.forEach((day) => {
-    const date = new Date(day.study_date);
-    const diff = Math.round((today.getTime() - date.getTime()) / 86400000);
-    const index = 13 - diff;
-    const count = day.new_words_count + day.review_words_count;
-
-    if (index >= 0 && index < levels.length) {
-      levels[index] = Math.min(4, count);
-    }
+  heatmap.forEach((day) => {
+    counts.set(localDateKey(new Date(day.study_date)), {
+      newCount: day.new_words_count,
+      reviewCount: day.review_words_count,
+    });
   });
 
-  return levels;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const mondayOffset = (today.getDay() + 6) % 7;
+  const start = new Date(today);
+  start.setDate(today.getDate() - mondayOffset - 7);
+
+  return Array.from({ length: 14 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const dayCounts = counts.get(localDateKey(date)) ?? { newCount: 0, reviewCount: 0 };
+
+    return {
+      key: localDateKey(date),
+      dayNumber: date.getDate(),
+      dateLabel: `${date.getMonth() + 1}月${date.getDate()}日`,
+      level: activityLevel(dayCounts.newCount + dayCounts.reviewCount),
+      newCount: dayCounts.newCount,
+      reviewCount: dayCounts.reviewCount,
+      isToday: date.getTime() === today.getTime(),
+      isFuture: date.getTime() > today.getTime(),
+    };
+  });
 }
 
 type AudioWord = {
@@ -274,10 +293,54 @@ function getWordAudio(word: AudioWord, student: Student | null) {
   return localAudio ?? dictVoiceUrl(word.spelling, accent);
 }
 
+// 词库释义常把多个词性挤在一行(如 "盖；帽子 vt. 覆盖；胜过 vi. 脱帽致意"),
+// 这里按词性标记拆成多行,每行一个词性标签,只影响展示不改数据。
+function splitDefinitionRows(definitions: { pos?: string; meaning: string }[]) {
+  const rows: { pos: string | null; meaning: string }[] = [];
+  const posMarker =
+    /(?:^|\s)((?:n|v|vt|vi|adj|adv|prep|pron|conj|interj|int|art|num|aux|abbr)\.)\s*/gi;
+
+  definitions.forEach((definition) => {
+    const text = [definition.pos, definition.meaning].filter(Boolean).join(" ").trim();
+    const markers = Array.from(text.matchAll(posMarker));
+
+    if (markers.length === 0) {
+      if (text) {
+        rows.push({ pos: null, meaning: text });
+      }
+      return;
+    }
+
+    const lead = text.slice(0, markers[0].index).trim();
+    if (lead) {
+      rows.push({ pos: null, meaning: lead });
+    }
+
+    markers.forEach((marker, index) => {
+      const start = (marker.index ?? 0) + marker[0].length;
+      const end = markers[index + 1]?.index ?? text.length;
+      const meaning = text.slice(start, end).trim();
+
+      if (meaning) {
+        rows.push({ pos: marker[1], meaning });
+      }
+    });
+  });
+
+  return rows;
+}
+
+// 音标按词典惯例用中括号包起来;数据里若已带 /.../ 或 [...] 先剥掉,避免出现双层括号。
+function formatPhonetic(phonetic: string | null) {
+  const bare = phonetic?.trim().replace(/^[/[]+|[/\]]+$/g, "").trim();
+
+  return bare ? `[${bare}]` : null;
+}
+
 function getWordPhonetic(word: AudioWord, student: Student | null) {
   const accent: AccentPreference = student?.preferred_accent ?? "us";
 
-  return accent === "uk" ? word.phonetic_uk : word.phonetic_us;
+  return formatPhonetic(accent === "uk" ? word.phonetic_uk : word.phonetic_us);
 }
 
 function matchesStudentGrade(book: WordBook, student: Student) {
@@ -570,12 +633,12 @@ export default function Home() {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "r" || event.key === "R") {
-        playAudioUrl(learningAudioUrl);
+        audioPlayer.replay(learningAudioUrl);
       }
 
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        playAudioUrl(learningAudioUrl);
+        audioPlayer.replay(learningAudioUrl);
       }
 
       if (event.key === " " || event.key === "ArrowDown") {
@@ -680,6 +743,7 @@ export default function Home() {
   }
 
   async function openView(view: ViewKey) {
+    audioPlayer.stop();
     setActiveView(view);
 
     if (view !== "test") {
@@ -866,7 +930,7 @@ export default function Home() {
               isSubmitting={isSubmittingRecord}
               learningMessage={learningMessage}
               onFlip={() => setIsCardFlipped((current) => !current)}
-              onReplay={() => playAudioUrl(learningAudioUrl)}
+              onReplay={() => audioPlayer.replay(learningAudioUrl)}
               onSubmit={(result) => void submitLearningRecord(result)}
               phonetic={learningWord ? getWordPhonetic(learningWord, activeStudent) : null}
               word={learningWord}
@@ -973,7 +1037,7 @@ function Dashboard({
           100,
       )
     : 0;
-  const heatmapDays = createHeatmapLevels(dashboardData?.heatmap ?? []);
+  const calendarDays = createCalendarDays(dashboardData?.heatmap ?? []);
   const reviewDueCount = dashboardData?.summary.review_due_count ?? 0;
 
   return (
@@ -1038,10 +1102,37 @@ function Dashboard({
             <CalendarDays aria-hidden="true" size={22} />
             <h3>学习日历</h3>
           </div>
-          <div className="heatmap" aria-label="最近 14 天学习热力图">
-            {heatmapDays.map((level, index) => (
-              <span data-level={level} key={`${level}-${index}`} />
+          <p className="calendar-range">
+            {calendarDays[0].dateLabel} – {calendarDays[calendarDays.length - 1].dateLabel} ·
+            上周与本周
+          </p>
+          <div className="calendar-grid" aria-label="最近两周学习日历">
+            {WEEKDAY_LABELS.map((label) => (
+              <span className="calendar-weekday" key={label}>
+                {label}
+              </span>
             ))}
+            {calendarDays.map((day) => (
+              <span
+                className={`calendar-day${day.isToday ? " today" : ""}${day.isFuture ? " future" : ""}`}
+                data-level={day.isFuture ? undefined : day.level}
+                key={day.key}
+                title={
+                  day.isFuture
+                    ? day.dateLabel
+                    : `${day.dateLabel} · 新学 ${day.newCount} · 复习 ${day.reviewCount}`
+                }
+              >
+                {day.dayNumber}
+              </span>
+            ))}
+          </div>
+          <div className="calendar-legend" aria-hidden="true">
+            <span>少</span>
+            {[0, 1, 2, 3, 4].map((level) => (
+              <i data-level={level} key={level} />
+            ))}
+            <span>多</span>
           </div>
         </article>
       </section>
@@ -1236,7 +1327,7 @@ function LearningRoom({
 }) {
   useEffect(() => {
     if (word) {
-      playAutoAudioUrl(audioUrl, `learning-${word.word_id}`);
+      audioPlayer.play(audioUrl, { key: `learning-${word.word_id}` });
     }
   }, [audioUrl, word]);
 
@@ -1271,27 +1362,34 @@ function LearningRoom({
               <span className="key-hints">↑ 重听 · ↓ 翻卡 · ← 不认识 · → 认识</span>
             </div>
             <button
+              aria-pressed={isCardFlipped}
               className={`word-card ${isCardFlipped ? "flipped" : ""}`}
               key={word.word_id}
               onClick={onFlip}
               type="button"
             >
-              <span className="word-spelling">{word.spelling}</span>
-              <span className="word-phonetic">{phonetic ?? ""}</span>
-              {isCardFlipped ? (
-                <span className="word-detail">
-                  {word.definitions.map((definition) => (
-                    <span key={`${definition.pos ?? ""}-${definition.meaning}`}>
-                      {definition.pos ? `${definition.pos} ` : ""}
-                      {definition.meaning}
-                    </span>
-                  ))}
-                  {word.example_sentence ? <em>{word.example_sentence}</em> : null}
-                  {word.example_translation ? <small>{word.example_translation}</small> : null}
+              <span className="word-card-inner">
+                <span className="word-card-face front" aria-hidden={isCardFlipped}>
+                  <span className="word-spelling">{word.spelling}</span>
+                  {phonetic ? <span className="word-phonetic">{phonetic}</span> : null}
+                  <span className="flip-hint">点击卡片或按空格键，翻转查看释义</span>
                 </span>
-              ) : (
-                <span className="flip-hint">按空格或点击翻转查看释义</span>
-              )}
+                <span className="word-card-face back" aria-hidden={!isCardFlipped}>
+                  <span className="word-spelling compact">{word.spelling}</span>
+                  {phonetic ? <span className="word-phonetic">{phonetic}</span> : null}
+                  <span className="word-detail">
+                    {splitDefinitionRows(word.definitions).map((row, index) => (
+                      <span className="definition-row" key={`${row.pos ?? ""}-${index}`}>
+                        {row.pos ? <i className="pos-tag">{row.pos}</i> : null}
+                        {row.meaning}
+                      </span>
+                    ))}
+                    {word.example_sentence ? <em>{word.example_sentence}</em> : null}
+                    {word.example_translation ? <small>{word.example_translation}</small> : null}
+                  </span>
+                  <span className="flip-hint">再点一下翻回正面</span>
+                </span>
+              </span>
             </button>
             <div className="learning-actions">
               <button
@@ -1375,7 +1473,7 @@ function TestRoom({
           <>
             <div className="test-summary">
               <div>
-                <span className="word-phonetic">{phonetic ?? ""}</span>
+                {phonetic ? <span className="word-phonetic">{phonetic}</span> : null}
                 <p>听发音，按键盘输入缺失字母。</p>
               </div>
               {reviewWord ? (
@@ -1397,7 +1495,7 @@ function TestRoom({
               disabled={isSubmitting}
               key={`${reviewWord ? "review" : "book"}-${testWord.word_id}`}
               onComplete={onComplete}
-              onReplay={() => playAudioUrl(audioUrl)}
+              onReplay={() => audioPlayer.replay(audioUrl)}
               word={spelling}
             />
           </>
@@ -1440,7 +1538,7 @@ function SpellingDrill({
   }));
 
   useEffect(() => {
-    playAutoAudioUrl(audioUrl, `spelling-${word}-${roundIndex}`);
+    audioPlayer.play(audioUrl, { key: `spelling-${word}-${roundIndex}` });
   }, [audioUrl, roundIndex, word]);
 
   const submitRound = useCallback(() => {
