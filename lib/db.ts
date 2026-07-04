@@ -1,4 +1,5 @@
 import { Pool, type QueryResultRow } from "pg";
+import { ensureDatabaseReady } from "./db-bootstrap";
 
 const connectionString =
   process.env.DATABASE_URL ??
@@ -23,5 +24,6 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export async function query<T extends QueryResultRow>(text: string, values: unknown[] = []) {
+  await ensureDatabaseReady(pool);
   return pool.query<T>(text, values);
 }
