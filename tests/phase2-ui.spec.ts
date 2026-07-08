@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { Pool } from "pg";
-import { createDrillRounds } from "../lib/spelling-drill";
+import { createDrillRounds, drillAnswer } from "../lib/spelling-drill";
 
 const pool = new Pool({
   connectionString:
@@ -58,7 +58,7 @@ async function completeSpellingDrill(page: import("@playwright/test").Page, word
   const rounds = createDrillRounds(word);
 
   for (const round of rounds) {
-    const answer = word.toLowerCase().slice(round.start, round.start + round.length);
+    const answer = drillAnswer(word, round);
     await page.keyboard.type(answer);
     await page.keyboard.press("Enter");
     await page.waitForTimeout(350);
@@ -112,10 +112,10 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
   await page.screenshot({ path: "test-results/phase2-ui/08-learning-flipped.png", fullPage: true });
   await expect(page.getByLabel("拼写三轮巩固")).toHaveCount(0);
 
-  const currentWord = await page.locator(".word-spelling").innerText();
+  const currentWord = await page.locator(".word-spelling").first().innerText();
   await page.getByRole("button", { name: "不认识" }).click();
-  await expect(page.locator(".word-spelling")).not.toHaveText(currentWord);
-  const secondLearningWord = await page.locator(".word-spelling").innerText();
+  await expect(page.locator(".word-spelling").first()).not.toHaveText(currentWord);
+  const secondLearningWord = await page.locator(".word-spelling").first().innerText();
   await page.screenshot({ path: "test-results/phase2-ui/09-after-record.png", fullPage: true });
 
   // 词书测试:独立的测试游标从词书第 1 个词开始(即 currentWord),
@@ -133,7 +133,7 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
     .getByRole("navigation", { name: "功能导航" })
     .getByRole("button", { name: "开始学习" })
     .click();
-  await expect(page.locator(".word-spelling")).toHaveText(secondLearningWord);
+  await expect(page.locator(".word-spelling").first()).toHaveText(secondLearningWord);
 
   await pool.query(
     `
@@ -188,6 +188,84 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
   await page.getByLabel("教材版本").selectOption("");
   await page.getByRole("button", { name: "保存" }).click();
   await expect(page.getByText("小学五年级 · 美音 · 教材版本不限")).toBeVisible();
+});
+
+test("multi-word entries auto-skip separators in spelling drill", async ({ page }) => {
+  // 造一本只含多单词词条("ice cream")的词书,验证空格作为固定分隔符自动跳过、无需输入。
+  const bookId = "90000000-0000-0000-0000-000000000001";
+  const phrase = "ice cream";
+
+  let wordId = (
+    await pool.query("SELECT id FROM words WHERE lower(spelling) = $1 LIMIT 1", [phrase])
+  ).rows[0]?.id;
+
+  if (!wordId) {
+    wordId = (
+      await pool.query(
+        `INSERT INTO words (spelling, definitions) VALUES ($1, '[{"pos":"n.","meaning":"冰淇淋"}]') RETURNING id`,
+        [phrase],
+      )
+    ).rows[0].id;
+  }
+
+  await pool.query(
+    `
+      INSERT INTO word_books (id, name, category, stage, publisher, description, total_words)
+      VALUES ($1, '多单词测试词书', 'exam_syllabus', 'primary', '测试', '验证多单词词条的拼写测试。', 1)
+      ON CONFLICT (id) DO NOTHING
+    `,
+    [bookId],
+  );
+  await pool.query(
+    `
+      INSERT INTO word_book_entries (id, word_book_id, word_id, order_index)
+      VALUES ('90000000-0000-0000-0000-000000000002', $1, $2, 1)
+      ON CONFLICT (id) DO NOTHING
+    `,
+    [bookId, wordId],
+  );
+
+  await page.goto("/");
+  await page.getByLabel("邮箱").fill("demo@example.com");
+  await page.getByLabel("密码").fill("demo123456");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page.getByRole("heading", { name: "仪表盘" })).toBeVisible();
+
+  await page.getByRole("button", { name: "选词库" }).click();
+  await page.getByRole("button", { name: "全部词书" }).click();
+  await page.getByLabel("搜索词书").fill("多单词测试词书");
+  await page
+    .locator(".book-card")
+    .filter({ has: page.getByRole("heading", { name: "多单词测试词书", exact: true }) })
+    .getByRole("button")
+    .click();
+  await expect(page.getByRole("heading", { name: "学习室" })).toBeVisible();
+
+  await page.getByRole("button", { name: "开始测试" }).click();
+  await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
+  await expect(page.getByLabel("拼写三轮巩固")).toBeVisible();
+
+  for (const round of createDrillRounds(phrase)) {
+    await expect(page.getByText(`第 ${round.round} 轮`)).toBeVisible();
+    // 空格渲染为固定分隔格,不算待填空格;待填空格数 = 缺失字母数
+    await expect(page.locator(".letter-cell.separator")).toHaveCount(1);
+    await expect(page.locator(".letter-cell.blank")).toHaveCount(round.length);
+    await page.screenshot({
+      path: `test-results/phase2-ui/15-multiword-round${round.round}.png`,
+      fullPage: true,
+    });
+    // 只输入字母(不含空格)即可完成本轮
+    await page.keyboard.type(drillAnswer(phrase, round));
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(350);
+  }
+
+  // 唯一词条三轮全部通过 → 该词书测试完成
+  await expect(page.getByText("当前词书的测试已全部完成")).toBeVisible();
+  await page.screenshot({
+    path: "test-results/phase2-ui/16-multiword-complete.png",
+    fullPage: true,
+  });
 });
 
 test("study progress is kept per book when switching between books", async ({ page }) => {

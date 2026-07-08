@@ -1471,6 +1471,13 @@ select:focus {
   color: #566180;
 }
 
+/* 空格/连字符等分隔符格:不参与作答,窄且无底色,与待填空格区分开。 */
+.letter-cell.separator {
+  width: 22px;
+  background: transparent;
+  color: #566180;
+}
+
 .letter-cell.blank {
   background: var(--surface);
   border: 2px dashed rgba(91, 108, 249, 0.5);
