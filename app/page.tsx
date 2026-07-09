@@ -476,12 +476,22 @@ export default function Home() {
   }, []);
 
   // 测试进度独立于学习进度:从 /api/testing/next 按测试游标顺序取词。
+  // 只有学过且被标记"认识"/答对过的词才会出现在测试里。
   const loadNextTestWord = useCallback(async (student: Student) => {
-    const data = await readJson<{ word: TestWord | null }>(
-      await fetch(`/api/testing/next?studentId=${student.id}`),
-    );
+    const data = await readJson<{
+      word: TestWord | null;
+      reason?: "no_book" | "no_learned_words" | "completed";
+    }>(await fetch(`/api/testing/next?studentId=${student.id}`));
     setTestWord(data.word);
-    setTestMessage(data.word ? "" : "当前词书的测试已全部完成，或还没有选择词书。");
+    setTestMessage(
+      data.word
+        ? ""
+        : data.reason === "no_book"
+          ? "还没有选择词书。"
+          : data.reason === "no_learned_words"
+            ? "还没有可测试的单词：先去学习室学一学，点过“认识”的单词才会进入测试。"
+            : "当前词书的测试已全部完成。",
+    );
   }, []);
 
   const submitLearningRecord = useCallback(
