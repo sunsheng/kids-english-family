@@ -23,6 +23,9 @@ type TestWordRow = {
 
 // 测试进度与学习进度完全隔离:按 学员 x 词书 使用 test_progress 独立游标,
 // 顺序取下一个待测词,并给出"第 N 阶段"分段信息。
+// 只测试学过且已掌握的词:learning_records.repetitions > 0 表示最近一次
+// 被标记为"认识"或复习答对(点"不认识"/答错会将 repetitions 重置为 0,
+// 未学过的词没有学习记录),这些词才有测试意义。
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const studentId = searchParams.get("studentId");
@@ -79,6 +82,10 @@ export async function GET(request: Request) {
       JOIN word_book_entries e
         ON e.word_book_id = tb.id
        AND e.order_index > p.test_cursor
+      JOIN learning_records lr
+        ON lr.student_id = $1
+       AND lr.word_id = e.word_id
+       AND lr.repetitions > 0
       JOIN words w ON w.id = e.word_id
       ORDER BY e.order_index ASC
       LIMIT 1

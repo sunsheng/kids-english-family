@@ -481,7 +481,11 @@ export default function Home() {
       await fetch(`/api/testing/next?studentId=${student.id}`),
     );
     setTestWord(data.word);
-    setTestMessage(data.word ? "" : "当前词书的测试已全部完成，或还没有选择词书。");
+    setTestMessage(
+      data.word
+        ? ""
+        : "暂无可测试的单词：只有学过并标记“认识”的单词才会进入测试，请先去学习室学习，或当前词书测试已全部完成。",
+    );
   }, []);
 
   const submitLearningRecord = useCallback(
