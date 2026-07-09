@@ -6,6 +6,11 @@ export type DrillRound = {
 };
 
 const alphabet = "abcdefghijklmnopqrstuvwxyz";
+
+// 挖空与作答只针对字母;空格、连字符、撇号等分隔符始终显示,不需要输入。
+function lettersOnly(word: string) {
+  return word.replace(/[^a-z]/g, "");
+}
 const confusingPairs = [
   ["a", "e"],
   ["e", "i"],
@@ -91,22 +96,23 @@ function createPrompt(correct: string) {
   return Array.from(options).sort((left, right) => left.localeCompare(right));
 }
 
+// round.start / round.length 均按"字母位"计(跳过分隔符),与 maskedWord、drillAnswer 保持一致。
 export function createDrillRounds(rawWord: string): DrillRound[] {
-  const word = rawWord.toLowerCase();
-  const firstLength = chunkLength(word);
-  const firstStarts = candidateStarts(word, firstLength);
+  const letters = lettersOnly(rawWord.toLowerCase());
+  const firstLength = chunkLength(letters);
+  const firstStarts = candidateStarts(letters, firstLength);
   const firstStart = firstStarts[Math.floor(firstStarts.length / 2)] ?? 0;
 
   let secondLength = firstLength;
-  let secondStarts = candidateStarts(word, secondLength).filter((start) => start !== firstStart);
+  let secondStarts = candidateStarts(letters, secondLength).filter((start) => start !== firstStart);
 
   if (secondStarts.length === 0 && secondLength > 1) {
     secondLength -= 1;
-    secondStarts = candidateStarts(word, secondLength).filter((start) => start !== firstStart);
+    secondStarts = candidateStarts(letters, secondLength).filter((start) => start !== firstStart);
   }
 
   const secondStart = secondStarts[0] ?? firstStart;
-  const firstCorrect = word.slice(firstStart, firstStart + firstLength);
+  const firstCorrect = letters.slice(firstStart, firstStart + firstLength);
 
   return [
     {
@@ -124,16 +130,27 @@ export function createDrillRounds(rawWord: string): DrillRound[] {
     {
       round: 3,
       start: 0,
-      length: word.length,
+      length: letters.length,
       prompt: [],
     },
   ];
 }
 
 export function maskedWord(word: string, round: DrillRound) {
-  return word
-    .split("")
-    .map((letter, index) =>
-      index >= round.start && index < round.start + round.length ? "" : letter,
-    );
+  let letterIndex = 0;
+
+  return word.split("").map((letter) => {
+    if (!/[a-z]/i.test(letter)) {
+      return letter;
+    }
+
+    const current = letterIndex;
+    letterIndex += 1;
+
+    return current >= round.start && current < round.start + round.length ? "" : letter;
+  });
+}
+
+export function drillAnswer(word: string, round: DrillRound) {
+  return lettersOnly(word.toLowerCase()).slice(round.start, round.start + round.length);
 }

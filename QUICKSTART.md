@@ -21,13 +21,14 @@ psql postgres://kids_english:kids_english_dev@localhost:5432/kids_english_family
 
 ```bash
 # 快速创建：自动生成用户 + 学生档案（小学一年级）
-node scripts/create-user.js <邮箱> <密码> [用户昵称]
+node scripts/create-user.mjs <邮箱> <密码> [用户昵称]
 
 # 示例
-node scripts/create-user.js parent@example.com mypassword "张三"
+node scripts/create-user.mjs parent@example.com mypassword "张三"
 ```
 
 ✅ 脚本会自动：
+
 - 创建用户账号
 - 创建默认学生档案（小学一年级）
 - 生成学生统计记录
@@ -63,7 +64,7 @@ npm run dev
 5. 创建用户：
    ```bash
    export DATABASE_URL="<Neon 连接串>"
-   node scripts/create-user.js <邮箱> <密码> [昵称]
+   node scripts/create-user.mjs <邮箱> <密码> [昵称]
    ```
 6. 点击 Deploy 完成
 
@@ -79,7 +80,7 @@ npm run dev
 ### 创建新账号
 
 ```bash
-node scripts/create-user.js parent@example.com secure_password "李四"
+node scripts/create-user.mjs parent@example.com secure_password "李四"
 ```
 
 创建后用户可直接登录，所有学习档案和设置齐全。
@@ -91,6 +92,7 @@ node scripts/create-user.js parent@example.com secure_password "李四"
 ### 修改学生档案
 
 登录后进入 **设置** → **编辑学习档案**，可修改：
+
 - 学生名字
 - 学段（小学/初中/高中）
 - 年级
@@ -129,20 +131,23 @@ SELECT * FROM students WHERE user_id = '<user_id>';  # 查看学生档案
 **Q: 如何重置用户密码？**
 
 A: 目前无 web UI 修改密码，可直接修改数据库：
+
 ```bash
-node scripts/create-user.js <新邮箱> <新密码>  # 创建新账号
+node scripts/create-user.mjs <新邮箱> <新密码>  # 创建新账号
 ```
 
 **Q: 如何删除用户？**
 
 A: 用户关联的所有学习进度通过外键级联删除。如需删除用户：
+
 ```sql
 DELETE FROM users WHERE email = 'xxx@example.com';
 ```
 
 **Q: 学生档案会在用户第一次登录时自动创建吗？**
 
-A: 
+A:
+
 - 使用脚本创建用户时，档案已经创建
 - 如果手动插入用户，第一次登录时系统会自动创建默认档案
 

@@ -10,18 +10,13 @@
 npm install
 ```
 
-2. 启动 PostgreSQL，并确保 Phase 2 种子数据已初始化：
+2. 启动本机 PostgreSQL，并确保 Phase 2 种子数据已初始化（首次搭建步骤见 [README](../README.md#本地开发)）：
 
 ```bash
-docker compose up -d db
+sudo service postgresql start
 ```
 
-若数据库卷早于 Phase 2 种子数据创建，需要重建本地开发卷：
-
-```bash
-docker compose down -v
-docker compose up -d db
-```
+若本地库早于 Phase 2 种子数据初始化，需要重建数据库后重新执行 `db/init/` 初始化脚本；e2e 测试依赖完整词库数据，可直接恢复 `db/backup/kids_english_family.sql` 备份（见 [db/backup/README.md](../db/backup/README.md)）。
 
 3. 启动前端：
 

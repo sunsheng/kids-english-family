@@ -25,7 +25,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dictVoiceUrl, type Accent } from "@/lib/audio";
 import { audioPlayer } from "@/lib/audio-player";
-import { createDrillRounds, maskedWord, type DrillRound } from "@/lib/spelling-drill";
+import { createDrillRounds, drillAnswer, maskedWord, type DrillRound } from "@/lib/spelling-drill";
 
 type ViewKey =
   "dashboard" | "library" | "learning" | "test" | "review" | "vocabulary" | "stats" | "settings";
@@ -332,7 +332,10 @@ function splitDefinitionRows(definitions: { pos?: string; meaning: string }[]) {
 
 // 音标按词典惯例用中括号包起来;数据里若已带 /.../ 或 [...] 先剥掉,避免出现双层括号。
 function formatPhonetic(phonetic: string | null) {
-  const bare = phonetic?.trim().replace(/^[/[]+|[/\]]+$/g, "").trim();
+  const bare = phonetic
+    ?.trim()
+    .replace(/^[/[]+|[/\]]+$/g, "")
+    .trim();
 
   return bare ? `[${bare}]` : null;
 }
@@ -1546,7 +1549,7 @@ function SpellingDrill({
       return;
     }
 
-    const expected = word.toLowerCase().slice(round.start, round.start + round.length);
+    const expected = drillAnswer(word, round);
     const actual = answers.join("").toLowerCase();
 
     if (actual !== expected) {
@@ -1627,9 +1630,15 @@ function SpellingDrill({
         <div className="letter-grid" aria-label="字母格">
           {cells.map(({ answer, index, letter }) => {
             if (letter) {
+              // 空格、连字符等分隔符不参与作答,渲染为窄的分隔格。
+              const isSeparator = !/[a-z]/i.test(letter);
+
               return (
-                <span className="letter-cell fixed" key={`${letter}-${index}`}>
-                  {letter}
+                <span
+                  className={`letter-cell ${isSeparator ? "separator" : "fixed"}`}
+                  key={`${letter}-${index}`}
+                >
+                  {isSeparator ? letter.trim() : letter}
                 </span>
               );
             }

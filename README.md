@@ -6,7 +6,6 @@
 
 - Next.js + TypeScript
 - PostgreSQL
-- Docker Compose
 
 ## 本地开发
 
@@ -16,14 +15,11 @@
 npm install
 ```
 
-启动数据库（二选一）：
+启动数据库（本机 PostgreSQL；线上部署使用 Vercel + Neon，见 [docs/deploy-vercel.md](docs/deploy-vercel.md)）：
 
 ```bash
-# 方式一：Docker Compose
-docker compose up -d db
-
-# 方式二：本机 PostgreSQL(无 Docker 环境)
 sudo apt-get install -y postgresql
+sudo service postgresql start
 sudo -u postgres psql -c "CREATE USER kids_english WITH PASSWORD 'kids_english_dev';"
 sudo -u postgres psql -c "CREATE DATABASE kids_english_family OWNER kids_english;"
 sudo -u postgres psql -d kids_english_family -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
@@ -52,7 +48,7 @@ password: demo123456
 
 ## 数据库
 
-本地开发数据库初始化脚本位于 `db/init/`（按序号依次执行：`001_schema.sql` 基础 schema + 种子数据，`002_settings_and_test_progress.sql` 学员教材版本偏好与测试进度表）。Docker Compose 首次建卷时会自动执行。
+本地开发数据库初始化脚本位于 `db/init/`（按序号依次执行：`001_schema.sql` 基础 schema + 种子数据，`002_settings_and_test_progress.sql` 学员教材版本偏好与测试进度表）。
 
 默认连接信息：
 
@@ -66,11 +62,13 @@ password: kids_english_dev
 
 环境变量示例见 `.env.example`。
 
-Phase 2 的开发种子数据包含 demo 家长账号、两名学员、样例词书、样例单词和一条默认学习计划。若数据库卷是在种子数据加入前创建的，需要重建本地开发卷后重新初始化：
+Phase 2 的开发种子数据包含 demo 家长账号、两名学员、样例词书、样例单词和一条默认学习计划。若本地库是在种子数据加入前初始化的，需要重建数据库后重新执行初始化脚本：
 
 ```bash
-docker compose down -v
-docker compose up -d db
+sudo -u postgres psql -c "DROP DATABASE kids_english_family;"
+sudo -u postgres psql -c "CREATE DATABASE kids_english_family OWNER kids_english;"
+PGPASSWORD=kids_english_dev psql -h localhost -U kids_english -d kids_english_family -f db/init/001_schema.sql
+PGPASSWORD=kids_english_dev psql -h localhost -U kids_english -d kids_english_family -f db/init/002_settings_and_test_progress.sql
 ```
 
 词库 CSV 校验和导入：

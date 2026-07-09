@@ -25,10 +25,10 @@
 
 项目 **Settings → Environment Variables** 添加:
 
-| 变量          | 值                                                    | 说明                                           |
-| ------------- | ----------------------------------------------------- | ---------------------------------------------- |
-| `AUTH_SECRET` | 随机长字符串,本地生成:`openssl rand -hex 32`         | 会话签名密钥,公网部署必须设置,否则无法登录   |
-| `DATABASE_URL` | Neon 连接串(自动注入)或自建数据库连接串 | 数据库连接,Vercel + Neon 部署时自动注入无需手动设置 |
+| 变量           | 值                                           | 说明                                                |
+| -------------- | -------------------------------------------- | --------------------------------------------------- |
+| `AUTH_SECRET`  | 随机长字符串,本地生成:`openssl rand -hex 32` | 会话签名密钥,公网部署必须设置,否则无法登录          |
+| `DATABASE_URL` | Neon 连接串(自动注入)或自建数据库连接串      | 数据库连接,Vercel + Neon 部署时自动注入无需手动设置 |
 
 **注意**:`AUTH_SECRET` 不设置时会话签名退回仓库里的公开默认密钥,任何人都能伪造登录,绝不可省略。
 
@@ -51,13 +51,14 @@ psql "postgres://<user>:<password>@<host>/neondb?sslmode=require" \
 
 ```bash
 # 本地运行(需要能连接 Neon 数据库)
-node scripts/create-user.js <邮箱> <密码> [用户昵称]
+node scripts/create-user.mjs <邮箱> <密码> [用户昵称]
 
 # 示例
-node scripts/create-user.js parent@example.com mypassword "张三"
+node scripts/create-user.mjs parent@example.com mypassword "张三"
 ```
 
 脚本会自动:
+
 - ✅ 创建用户账号
 - ✅ 创建默认学生档案(小学一年级)
 - ✅ 生成学生统计记录
@@ -69,11 +70,11 @@ node scripts/create-user.js parent@example.com mypassword "张三"
 ```bash
 # 方式 1: 环境变量指定 Neon 连接串
 export DATABASE_URL="postgres://user:password@host/neondb?sslmode=require"
-node scripts/create-user.js parent@example.com mypassword
+node scripts/create-user.mjs parent@example.com mypassword
 
 # 方式 2: 也可以连接本地 PostgreSQL 做测试
 export DATABASE_URL="postgres://kids_english:kids_english_dev@localhost:5432/kids_english_family"
-node scripts/create-user.js parent@example.com mypassword
+node scripts/create-user.mjs parent@example.com mypassword
 ```
 
 ### 5. 部署
