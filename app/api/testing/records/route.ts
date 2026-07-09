@@ -4,27 +4,20 @@ import { scheduleReview } from "@/lib/srs";
 
 export const runtime = "nodejs";
 
-// 记录一次拼写测试结果:更新 SM-2 复习调度和统计,推进该词书的测试游标,
+// 记录一次拼写测试结果:更新 SM-2 复习调度和统计,并在 test_records 中按词落测试记录,
 // 但绝不触碰 study_plans.cursor_order_index(学习进度与测试进度隔离)。
 export async function POST(request: Request) {
   const body = (await request.json()) as {
     studentId?: string;
     wordId?: string;
     wordBookId?: string;
-    entryOrderIndex?: number;
     result?: "correct" | "wrong";
   };
 
   const isCorrect = body.result === "correct";
   const isWrong = body.result === "wrong";
 
-  if (
-    !body.studentId ||
-    !body.wordId ||
-    !body.wordBookId ||
-    typeof body.entryOrderIndex !== "number" ||
-    (!isCorrect && !isWrong)
-  ) {
+  if (!body.studentId || !body.wordId || !body.wordBookId || (!isCorrect && !isWrong)) {
     return NextResponse.json({ error: "测试记录信息不完整。" }, { status: 400 });
   }
 
@@ -98,17 +91,35 @@ export async function POST(request: Request) {
     ],
   );
 
-  const progress = await query<{ cursor_order_index: number; stage_size: number }>(
+  const testRecord = await query<{ last_result: "correct" | "wrong"; times_tested: number }>(
     `
-      INSERT INTO test_progress (student_id, word_book_id, cursor_order_index)
-      VALUES ($1, $2, $3)
-      ON CONFLICT ON CONSTRAINT uq_test_progress_student_book
+      INSERT INTO test_records (
+        student_id,
+        word_book_id,
+        word_id,
+        last_result,
+        times_tested,
+        times_correct,
+        times_wrong
+      )
+      VALUES ($1, $2, $3, $4, 1, $5, $6)
+      ON CONFLICT ON CONSTRAINT uq_test_records_student_book_word
       DO UPDATE SET
-        cursor_order_index = greatest(test_progress.cursor_order_index, EXCLUDED.cursor_order_index),
-        updated_at = now()
-      RETURNING cursor_order_index, stage_size
+        last_result = EXCLUDED.last_result,
+        times_tested = test_records.times_tested + 1,
+        times_correct = test_records.times_correct + EXCLUDED.times_correct,
+        times_wrong = test_records.times_wrong + EXCLUDED.times_wrong,
+        last_tested_at = now()
+      RETURNING last_result, times_tested
     `,
-    [body.studentId, body.wordBookId, body.entryOrderIndex],
+    [
+      body.studentId,
+      body.wordBookId,
+      body.wordId,
+      body.result,
+      isCorrect ? 1 : 0,
+      isWrong ? 1 : 0,
+    ],
   );
 
   await query(
@@ -122,5 +133,5 @@ export async function POST(request: Request) {
     [body.studentId],
   );
 
-  return NextResponse.json({ progress: progress.rows[0] });
+  return NextResponse.json({ record: testRecord.rows[0] });
 }

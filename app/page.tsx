@@ -84,7 +84,6 @@ type TestWord = {
   word_book_id: string;
   word_book_name: string;
   total_words: number;
-  test_cursor: number;
   stage_size: number;
   entry_order_index: number;
   word_id: string;
@@ -475,8 +474,8 @@ export default function Home() {
     setIsCardFlipped(false);
   }, []);
 
-  // 测试进度独立于学习进度:从 /api/testing/next 按测试游标顺序取词。
-  // 只有学过且被标记"认识"/答对过的词才会出现在测试里。
+  // 测试进度独立于学习进度:/api/testing/next 按词书顺序取"已学会且尚未测对"的词。
+  // 测对过的词不再重复出现;后学会或测错后重新学会的词会自动补进测试队列。
   const loadNextTestWord = useCallback(async (student: Student) => {
     const data = await readJson<{
       word: TestWord | null;
@@ -490,7 +489,7 @@ export default function Home() {
           ? "还没有选择词书。"
           : data.reason === "no_learned_words"
             ? "还没有可测试的单词：先去学习室学一学，点过“认识”的单词才会进入测试。"
-            : "当前词书的测试已全部完成。",
+            : "已学会的单词都测完了，学会新的单词后可以继续测试。",
     );
   }, []);
 
@@ -582,7 +581,6 @@ export default function Home() {
               studentId: activeStudent.id,
               wordId: testWord.word_id,
               wordBookId: testWord.word_book_id,
-              entryOrderIndex: testWord.entry_order_index,
               result,
             }),
           }),

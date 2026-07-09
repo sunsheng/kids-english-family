@@ -8,7 +8,7 @@
 - **单词库与学员进度分离**：`words` 是全局共享词库（同一个单词不会因为出现在多本词书里而重复存储），`word_book_entries` 负责"某个词属于哪本词书的第几单元/第几位"，`learning_records` 负责"某个学员对某个单词学到什么程度"。这样人教版和外研版共有的单词、以及"中考1600"和某教材重合的单词，不会产生脏数据。
 - **复习算法落在 `learning_records` 一张表上**，采用简化版 SM-2（艾宾浩斯曲线的工程实现，逻辑比原版 SM-2 简单，够用且好维护），不用单独建"复习队列"表——复习任务=`WHERE next_review_at <= today`的一条 SQL。
 - **生词本不是独立数据**，是 `learning_records.is_in_vocab_book = true` 的一个视图/筛选条件，这样"不认识"的词依然能继续参与复习调度，避免数据割裂。
-- **学习进度与测试进度完全隔离**：`study_plans.cursor_order_index` 只被"开始学习"推进；拼写测试用独立的 `test_progress` 表（学员 x 词书 一条游标），按"一阶段一阶段"(默认每 10 词一个阶段)顺序推进。不同学段/学期/版本对应不同词书，因此两类进度天然按词书隔离，切换词书后再切回进度保留。
+- **学习进度与测试进度完全隔离**：`study_plans.cursor_order_index` 只被"开始学习"推进；拼写测试用独立的 `test_records` 表（学员 x 词书 x 单词 一条记录）。测试只出"学过且最近一次被标记认识/答对"的词（`learning_records.repetitions > 0`）：没学过或点了"不认识"的词跳过；测对过的词不再重复出现；后学会的词以及测错后重新学会的词按词书顺序自动补测。不同学段/学期/版本对应不同词书，因此两类进度天然按词书隔离，切换词书后再切回进度保留。（旧版按游标推进的 `test_progress` 表保留作历史数据，代码已不再读写。）
 - **打卡日历/统计做了轻量冗余**（`daily_study_logs` + `student_stats`），因为仪表盘要求"极简、无多余请求"，用聚合查询现算连续打卡天数在数据量大了以后不划算，提前做缓存表更省心，且不违反"避免过度设计"——这是本产品明确写在需求里的展示项，不是假设的未来需求。
 
 ## 2. ER 关系图
@@ -26,8 +26,9 @@ erDiagram
     words ||--o{ word_book_entries : "被引用"
     words ||--o{ learning_records : "被学习"
     word_books ||--o{ study_plans : "被选为学习计划"
-    students ||--o{ test_progress : "测试进度"
-    word_books ||--o{ test_progress : "被测试"
+    students ||--o{ test_records : "测试记录"
+    word_books ||--o{ test_records : "被测试"
+    words ||--o{ test_records : "被测试"
 ```
 
 ## 3. 建表 DDL
@@ -189,19 +190,40 @@ CREATE TABLE student_stats (
     updated_at            timestamptz NOT NULL DEFAULT now()
 );
 
--- ========== 11. 拼写测试进度（与学习进度隔离,按 学员 x 词书 独立推进） ==========
-CREATE TABLE test_progress (
-    id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id          uuid NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    word_book_id        uuid NOT NULL REFERENCES word_books(id) ON DELETE CASCADE,
-    cursor_order_index  integer NOT NULL DEFAULT 0,   -- 已完成测试到词书的第几个词
-    stage_size          smallint NOT NULL DEFAULT 10, -- "一阶段"包含的词数
-    updated_at          timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT uq_test_progress_student_book UNIQUE (student_id, word_book_id)
+-- ========== 11. 拼写测试记录（与学习进度隔离,按 学员 x 词书 x 单词 记录） ==========
+CREATE TABLE test_records (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id      uuid NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    word_book_id    uuid NOT NULL REFERENCES word_books(id) ON DELETE CASCADE,
+    word_id         uuid NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+    last_result     varchar(10) NOT NULL CHECK (last_result IN ('correct', 'wrong')), -- 最近一次测试结果
+    times_tested    integer NOT NULL DEFAULT 1,
+    times_correct   integer NOT NULL DEFAULT 0,
+    times_wrong     integer NOT NULL DEFAULT 0,
+    first_tested_at timestamptz NOT NULL DEFAULT now(),
+    last_tested_at  timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_test_records_student_book_word UNIQUE (student_id, word_book_id, word_id)
 );
+CREATE INDEX idx_test_records_student_book ON test_records(student_id, word_book_id);
 ```
 
 ## 4. 关键业务逻辑对应的查询
+
+**下一个待测词**（测试页）：学过且最近一次认识/答对（`repetitions > 0`）、且尚未测对过的词，按词书顺序取第一个：
+
+```sql
+SELECT w.*, e.order_index
+FROM word_book_entries e
+JOIN words w ON w.id = e.word_id
+JOIN learning_records lr
+  ON lr.student_id = :student_id AND lr.word_id = w.id AND lr.repetitions > 0
+LEFT JOIN test_records tr
+  ON tr.student_id = :student_id AND tr.word_book_id = e.word_book_id AND tr.word_id = w.id
+WHERE e.word_book_id = :word_book_id
+  AND (tr.id IS NULL OR tr.last_result = 'wrong')
+ORDER BY e.order_index ASC
+LIMIT 1;
+```
 
 **今日待复习列表**（复习中心）：
 

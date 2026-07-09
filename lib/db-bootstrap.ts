@@ -6,6 +6,9 @@ const BOOTSTRAP_VERSION = "backup_2026_07_03";
 const LOCK_KEY = 2026070301;
 const COPY_BATCH_SIZE = 500;
 
+// 备份恢复之后的增量迁移:按顺序执行 db/init 下的脚本(需可重复执行,如 IF NOT EXISTS)。
+const MIGRATIONS = [{ version: "2026_07_09_test_records", file: "db/init/003_test_records.sql" }];
+
 let bootstrapPromise: Promise<void> | undefined;
 
 export function ensureDatabaseReady(pool: Pool) {
@@ -24,21 +27,26 @@ async function bootstrapDatabase(pool: Pool) {
       )
     `);
 
-    const existing = await pool.query("SELECT 1 FROM public.schema_migrations WHERE version = $1", [
-      BOOTSTRAP_VERSION,
-    ]);
-    if ((existing.rowCount ?? 0) > 0) {
-      return;
+    const existing = await pool.query<{ version: string }>(
+      "SELECT version FROM public.schema_migrations",
+    );
+    const applied = new Set(existing.rows.map((row) => row.version));
+
+    if (!applied.has(BOOTSTRAP_VERSION)) {
+      if (!(await hasWordBankData(pool))) {
+        await restoreBackup(pool);
+      }
+      await recordMigration(pool, BOOTSTRAP_VERSION);
     }
 
-    const hasRestoredData = await hasWordBankData(pool);
-    if (hasRestoredData) {
-      await recordMigration(pool);
-      return;
+    for (const migration of MIGRATIONS) {
+      if (applied.has(migration.version)) {
+        continue;
+      }
+      const sql = await readFile(resolve(process.cwd(), migration.file), "utf8");
+      await pool.query(sql);
+      await recordMigration(pool, migration.version);
     }
-
-    await restoreBackup(pool);
-    await recordMigration(pool);
   } finally {
     await pool.query("SELECT pg_advisory_unlock($1)", [LOCK_KEY]);
   }
@@ -54,10 +62,10 @@ async function hasWordBankData(pool: Pool) {
   return count.rows[0]?.count > 0;
 }
 
-async function recordMigration(pool: Pool) {
+async function recordMigration(pool: Pool, version: string) {
   await pool.query(
     "INSERT INTO public.schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING",
-    [BOOTSTRAP_VERSION],
+    [version],
   );
 }
 
