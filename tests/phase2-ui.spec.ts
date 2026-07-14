@@ -20,7 +20,7 @@ test.beforeEach(async () => {
     "DELETE FROM daily_study_logs WHERE student_id = '10000000-0000-0000-0000-000000000001'",
   );
   await pool.query(
-    "DELETE FROM test_progress WHERE student_id = '10000000-0000-0000-0000-000000000001'",
+    "DELETE FROM test_records WHERE student_id = '10000000-0000-0000-0000-000000000001'",
   );
   await pool.query(
     `
@@ -118,22 +118,40 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
   const secondLearningWord = await page.locator(".word-spelling").first().innerText();
   await page.screenshot({ path: "test-results/phase2-ui/09-after-record.png", fullPage: true });
 
-  // 词书测试:独立的测试游标从词书第 1 个词开始(即 currentWord),
-  // 且完成测试不会影响学习进度。
+  // 只点过"不认识"的词不进入测试:此时词书里没有可测的词
   await page.getByRole("button", { name: "开始测试" }).click();
   await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
-  await expect(page.getByLabel("拼写三轮巩固")).toBeVisible();
-  await expect(page.getByText("第 1 阶段")).toBeVisible();
-  await completeSpellingDrill(page, currentWord);
-  await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
-  await page.screenshot({ path: "test-results/phase2-ui/10-test-complete.png", fullPage: true });
+  await expect(page.getByText("还没有可测试的单词")).toBeVisible();
+  await page.screenshot({ path: "test-results/phase2-ui/10-test-empty.png", fullPage: true });
 
-  // 回到学习室:学习进度不受测试影响,仍停在第二个学习词
+  // 回学习室把第二个词标记"认识",它才有资格进入测试
   await page
     .getByRole("navigation", { name: "功能导航" })
     .getByRole("button", { name: "开始学习" })
     .click();
   await expect(page.locator(".word-spelling").first()).toHaveText(secondLearningWord);
+  await page.getByRole("button", { name: "认识", exact: true }).click();
+  await expect(page.locator(".word-spelling").first()).not.toHaveText(secondLearningWord);
+  const thirdLearningWord = await page.locator(".word-spelling").first().innerText();
+
+  // 词书测试:跳过标记"不认识"的第 1 个词,从已点"认识"的第 2 个词开始,
+  // 且完成测试不会影响学习进度。
+  await page.getByRole("button", { name: "开始测试" }).click();
+  await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
+  await expect(page.getByLabel("拼写三轮巩固")).toBeVisible();
+  await expect(page.getByText("第 1 阶段")).toBeVisible();
+  await completeSpellingDrill(page, secondLearningWord);
+  await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
+  // 测对过的词不再重复测,其余词还没学会 → 无词可测
+  await expect(page.getByText("已学会的单词都测完了")).toBeVisible();
+  await page.screenshot({ path: "test-results/phase2-ui/10-test-complete.png", fullPage: true });
+
+  // 回到学习室:学习进度不受测试影响,仍停在第三个学习词
+  await page
+    .getByRole("navigation", { name: "功能导航" })
+    .getByRole("button", { name: "开始学习" })
+    .click();
+  await expect(page.locator(".word-spelling").first()).toHaveText(thirdLearningWord);
 
   await pool.query(
     `
@@ -165,6 +183,16 @@ test("phase 3 learning, review, vocabulary, and stats flow", async ({ page }) =>
   await expect(page.getByRole("heading", { name: "复习中心" })).toBeVisible();
   await expect(page.getByText("今天没有到期复习词。")).toBeVisible();
   await page.screenshot({ path: "test-results/phase2-ui/12-review-complete.png", fullPage: true });
+
+  // 补测:第 1 个词当初点了"不认识"被测试跳过,刚才复习答对(重新学会)后,
+  // 再进测试页应能按词书顺序补测到它(全书第 1/6 个)
+  await page.getByRole("button", { name: "开始测试" }).click();
+  await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
+  await expect(page.getByLabel("拼写三轮巩固")).toBeVisible();
+  await expect(page.getByText("全书 1/6")).toBeVisible();
+  await completeSpellingDrill(page, currentWord);
+  await expect(page.getByText("已学会的单词都测完了")).toBeVisible();
+  await page.screenshot({ path: "test-results/phase2-ui/12b-makeup-test.png", fullPage: true });
 
   await page.getByRole("button", { name: "统计" }).click();
   await expect(page.getByRole("heading", { name: "统计" })).toBeVisible();
@@ -224,6 +252,11 @@ test("multi-word entries auto-skip separators in spelling drill", async ({ page 
     `,
     [bookId, wordId],
   );
+  // 清掉历史运行留下的该词书学习计划,保证每次都从第一个词开始学
+  await pool.query(
+    "DELETE FROM study_plans WHERE student_id = '10000000-0000-0000-0000-000000000001' AND word_book_id = $1",
+    [bookId],
+  );
 
   await page.goto("/");
   await page.getByLabel("邮箱").fill("demo@example.com");
@@ -240,6 +273,10 @@ test("multi-word entries auto-skip separators in spelling drill", async ({ page 
     .getByRole("button")
     .click();
   await expect(page.getByRole("heading", { name: "学习室" })).toBeVisible();
+
+  // 先在学习室点"认识",这个词条才会进入测试
+  await expect(page.locator(".word-spelling").first()).toHaveText(phrase);
+  await page.getByRole("button", { name: "认识", exact: true }).click();
 
   await page.getByRole("button", { name: "开始测试" }).click();
   await expect(page.getByRole("heading", { name: "测试" })).toBeVisible();
@@ -260,8 +297,8 @@ test("multi-word entries auto-skip separators in spelling drill", async ({ page 
     await page.waitForTimeout(350);
   }
 
-  // 唯一词条三轮全部通过 → 该词书测试完成
-  await expect(page.getByText("当前词书的测试已全部完成")).toBeVisible();
+  // 唯一词条三轮全部通过 → 已学会的词都测完
+  await expect(page.getByText("已学会的单词都测完了")).toBeVisible();
   await page.screenshot({
     path: "test-results/phase2-ui/16-multiword-complete.png",
     fullPage: true,
