@@ -12,3 +12,11 @@ playwright-report/
 blob-report/
 *.log
 *.tsbuildinfo
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
