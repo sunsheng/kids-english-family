@@ -851,9 +851,11 @@ export default function Home() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">少儿英语·家庭版</p>
-          <h1>当前学员：{activeStudent?.name ?? "未选择"}</h1>
+        <div className="topbar-brand">
+          <span className="brand-mark" aria-hidden="true">
+            <Sparkles size={20} />
+          </span>
+          <h1>少儿英语·家庭版</h1>
         </div>
         <div className="topbar-actions" aria-label="学习状态">
           <span className="today-chip">

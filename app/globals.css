@@ -336,9 +336,30 @@ select:focus {
   z-index: 20;
 }
 
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: var(--gradient-primary);
+  box-shadow: var(--shadow-sm);
+}
+
 .topbar h1 {
-  margin: 2px 0 0;
-  font-size: 22px;
+  margin: 0;
+  font-size: 20px;
+  white-space: nowrap;
 }
 
 .topbar-actions {
@@ -1921,12 +1942,15 @@ select:focus {
     padding: 12px 16px;
   }
 
-  .topbar .eyebrow {
-    font-size: 11px;
+  /* 手机上品牌只留 logo 图标,学员信息由右侧胶囊承载 */
+  .topbar h1 {
+    display: none;
   }
 
-  .topbar h1 {
-    font-size: 17px;
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
   }
 
   .topbar-actions {
