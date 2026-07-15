@@ -112,6 +112,13 @@ async function executeStatement(pool: Pool, statement: string) {
     return;
   }
 
+  // pg_dump 的 set_config('search_path', '', false) 是会话级的,会把连接池中该连接的
+  // search_path 永久置空,导致后续非限定表名的迁移和业务查询报 3F000/表不存在。
+  // 备份里的语句本身都带 public. 前缀,跳过这条对恢复没有影响。
+  if (sql.startsWith("SELECT pg_catalog.set_config('search_path'")) {
+    return;
+  }
+
   await pool.query(sql);
 }
 
