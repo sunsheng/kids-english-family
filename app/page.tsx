@@ -859,6 +859,19 @@ export default function Home() {
           <span className="today-chip">
             今日进度：{todayDone}/{todayTarget}
           </span>
+          {activeStudent ? (
+            <div className="student-section topbar-version">
+              <div className="student-card compact active">
+                <span className="avatar" aria-hidden="true">
+                  {initials(activeStudent.name)}
+                </span>
+                <span className="student-info">
+                  <strong>{activeStudent.name}</strong>
+                  <small>{activeStudent.preferred_accent === "us" ? "美音" : "英音"}</small>
+                </span>
+              </div>
+            </div>
+          ) : null}
           <button aria-label="退出" onClick={handleLogout} type="button">
             <LogOut aria-hidden="true" size={18} />
             退出
