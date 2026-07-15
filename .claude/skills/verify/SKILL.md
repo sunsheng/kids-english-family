@@ -25,17 +25,14 @@ psql -U postgres -c "CREATE DATABASE kids_english_family OWNER kids_english;"
 
 ## 2. 数据库 bootstrap 的坑
 
-应用首次查询时自动恢复 `db/backup/kids_english_family.sql`（约 24 万词条，需几分钟）。
-**已知坑**：备份是 pg_dump 格式，内含 `set_config('search_path', '', false)`，会把连接池会话的
-search_path 置空，导致随后 `db/init/003_test_records.sql` 的非限定 `CREATE TABLE` 报
-`3F000 no schema has been selected`。修法——手动补迁移并登记版本，然后**重启 dev server**
-（失败的 bootstrapPromise 会被进程缓存）：
+应用首次查询时自动恢复 `db/backup/kids_english_family.sql`（约 24 万词条，本地约 5 秒），
+随后按序执行 `db/init` 增量迁移，全程无需人工干预——首次登录请求即触发。
 
-```bash
-psql -U kids_english -d kids_english_family -f db/init/003_test_records.sql
-psql -U kids_english -d kids_english_family -c \
-  "INSERT INTO schema_migrations (version) VALUES ('2026_07_09_test_records') ON CONFLICT DO NOTHING;"
-```
+**历史坑（已修复）**：备份是 pg_dump 格式，内含会话级 `set_config('search_path', '', false)`，
+曾把连接池连接的 search_path 永久置空，导致后续非限定表名的迁移报 `3F000`。
+`lib/db-bootstrap.ts` 的 `executeStatement` 现已跳过该语句。若在旧代码上遇到 3F000：
+手动 `psql -f db/init/003_test_records.sql` 补迁移、往 `schema_migrations` 登记版本，
+然后**重启 dev server**（失败的 bootstrapPromise 会被进程缓存）。
 
 ## 3. 启动应用
 
