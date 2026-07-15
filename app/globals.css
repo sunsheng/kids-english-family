@@ -336,36 +336,15 @@ select:focus {
   z-index: 20;
 }
 
-.topbar-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border-radius: 12px;
-  color: #fff;
-  background: var(--gradient-primary);
-  box-shadow: var(--shadow-sm);
-}
-
 .topbar h1 {
-  margin: 0;
-  font-size: 20px;
-  white-space: nowrap;
+  margin: 2px 0 0;
+  font-size: 22px;
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   font-size: 16px;
 }
 
@@ -429,65 +408,6 @@ select:focus {
   background: var(--surface);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-sm);
-}
-
-/* 默认在桌面隐藏topbar版本的学员卡片;它只是定位容器,去掉卡片外壳避免"卡中卡" */
-.topbar-actions .student-section.topbar-version {
-  display: none;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-/* 紧凑版学员卡片 - 用于topbar */
-.student-card.compact {
-  gap: 8px;
-  padding: 6px 12px;
-  height: 44px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: transparent;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-.student-card.compact .avatar {
-  width: 32px;
-  height: 32px;
-  font-size: 14px;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px -2px rgba(91, 108, 249, 0.4);
-}
-
-.student-card.compact .student-info {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  line-height: 1.2;
-}
-
-.student-card.compact strong {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--foreground);
-  white-space: nowrap;
-}
-
-.student-card.compact small {
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.student-card.compact:hover {
-  background: var(--primary-soft);
-  border-color: var(--primary);
-}
-
-.student-card.compact.active {
-  background: var(--primary-soft);
-  border-color: rgba(91, 108, 249, 0.35);
 }
 
 .student-title-row {
@@ -1870,26 +1790,8 @@ select:focus {
   }
 
   /* 学员信息顶栏已有,移动端隐藏侧栏卡片节省空间 */
-  .sidebar .student-section {
+  .student-section {
     display: none;
-  }
-
-  .topbar-actions .student-section.topbar-version {
-    display: flex;
-  }
-
-  .topbar-actions {
-    gap: 10px;
-  }
-
-  .today-chip {
-    padding: 8px 14px;
-    font-size: 14px;
-  }
-
-  .topbar-actions button {
-    height: 40px;
-    padding: 0 14px;
   }
 
   .nav-list {
@@ -1942,57 +1844,28 @@ select:focus {
     padding: 12px 16px;
   }
 
-  /* 手机上品牌只留 logo 图标,学员信息由右侧胶囊承载 */
-  .topbar h1 {
-    display: none;
+  .topbar .eyebrow {
+    font-size: 11px;
   }
 
-  .brand-mark {
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
+  .topbar h1 {
+    font-size: 17px;
   }
 
   .topbar-actions {
-    gap: 6px;
+    gap: 8px;
     font-size: 14px;
   }
 
-  .topbar-actions .student-section.topbar-version {
-    display: flex;
-  }
-
-  .student-card.compact {
-    gap: 4px;
-    padding: 4px 10px;
-    height: 40px;
-  }
-
-  .student-card.compact .avatar {
-    width: 28px;
-    height: 28px;
-    font-size: 12px;
-  }
-
-  .student-card.compact strong {
+  .today-chip {
+    padding: 7px 12px;
     font-size: 13px;
   }
 
-  .student-card.compact small {
-    display: none;
-  }
-
-  .today-chip {
-    padding: 6px 12px;
-    font-size: 12px;
-    white-space: nowrap;
-  }
-
   .topbar-actions button {
-    height: 36px;
-    padding: 0 10px;
-    font-size: 12px;
-    white-space: nowrap;
+    height: 38px;
+    padding: 0 12px;
+    font-size: 14px;
   }
 
   .page-heading {

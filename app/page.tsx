@@ -851,29 +851,14 @@ export default function Home() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="topbar-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <Sparkles size={20} />
-          </span>
-          <h1>少儿英语·家庭版</h1>
+        <div>
+          <p className="eyebrow">少儿英语·家庭版</p>
+          <h1>当前学员：{activeStudent?.name ?? "未选择"}</h1>
         </div>
         <div className="topbar-actions" aria-label="学习状态">
           <span className="today-chip">
             今日进度：{todayDone}/{todayTarget}
           </span>
-          {activeStudent ? (
-            <div className="student-section topbar-version">
-              <div className="student-card compact active">
-                <span className="avatar" aria-hidden="true">
-                  {initials(activeStudent.name)}
-                </span>
-                <span className="student-info">
-                  <strong>{activeStudent.name}</strong>
-                  <small>{activeStudent.preferred_accent === "us" ? "美音" : "英音"}</small>
-                </span>
-              </div>
-            </div>
-          ) : null}
           <button aria-label="退出" onClick={handleLogout} type="button">
             <LogOut aria-hidden="true" size={18} />
             退出
