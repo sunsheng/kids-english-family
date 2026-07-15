@@ -410,9 +410,14 @@ select:focus {
   box-shadow: var(--shadow-sm);
 }
 
-/* 默认在桌面隐藏topbar版本的学员卡片 */
+/* 默认在桌面隐藏topbar版本的学员卡片;它只是定位容器,去掉卡片外壳避免"卡中卡" */
 .topbar-actions .student-section.topbar-version {
   display: none;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 /* 紧凑版学员卡片 - 用于topbar */
@@ -445,6 +450,7 @@ select:focus {
   font-size: 14px;
   font-weight: 600;
   color: var(--foreground);
+  white-space: nowrap;
 }
 
 .student-card.compact small {
@@ -1955,12 +1961,14 @@ select:focus {
   .today-chip {
     padding: 6px 12px;
     font-size: 12px;
+    white-space: nowrap;
   }
 
   .topbar-actions button {
     height: 36px;
     padding: 0 10px;
     font-size: 12px;
+    white-space: nowrap;
   }
 
   .page-heading {
